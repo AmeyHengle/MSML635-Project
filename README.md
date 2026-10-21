@@ -135,8 +135,8 @@ debug_rows: null               # set an int for a smoke run; reported runs leave
 
 `src/data.py`, `scripts/prepare.py`. Outputs under `data/processed/`: the wide table, `split.json`, cached embeddings, `pca.joblib`, and context matrices.
 
-- [ ] Download `routerbench_0shot.pkl` from `withmartian/routerbench` (~100 MB) with `huggingface_hub.hf_hub_download`.
-- [ ] Print columns, `model_name` values, `eval_name` values, and per-model cost and performance ranges. Rename onto `sample_id`, `prompt`, `eval_name`, `model_name`, `performance`, `cost` if the file uses other headers.
+- [x] Download `routerbench_0shot.pkl` from `withmartian/routerbench` (~100 MB) with `huggingface_hub.hf_hub_download`.
+- [x] Print columns, `model_name` values, `eval_name` values, and per-model cost and performance ranges. Rename onto `sample_id`, `prompt`, `eval_name`, `model_name`, `performance`, `cost` if the file uses other headers.
 - [ ] Write four arms into `arms` in role order, plus `held_out_arm`. The loader requires exactly those four names.
 - [ ] Keep MMLU, GSM8K, MBPP, and MT-Bench when the printed names contain them. Store the file’s exact strings. Set `mix_eval` to MT-Bench, or, if it is absent, to the locked eval where the cheap arm’s mean quality is lowest.
 - [ ] Pivot to one row per `sample_id` with quality and cost for each role and for the held-out model. Drop a query that is missing a finite value for any of the four arms.
