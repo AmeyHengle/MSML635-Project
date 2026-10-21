@@ -9,7 +9,7 @@ The project is finished when the four boxes in [Done](#done) are checked. The de
 ## Progress
 
 - [x] 1. Setup
-- [ ] 2. Data and features
+- [x] 2. Data and features
 - [ ] 3. Simulator and checks (i) and (ii)
 - [ ] 4. Policies, sanity check (v), synthetic check (iii)
 - [ ] 5. Stationary comparison, RQ1
@@ -137,12 +137,12 @@ debug_rows: null               # set an int for a smoke run; reported runs leave
 
 - [x] Download `routerbench_0shot.pkl` from `withmartian/routerbench` (~100 MB) with `huggingface_hub.hf_hub_download`.
 - [x] Print columns, `model_name` values, `eval_name` values, and per-model cost and performance ranges. Rename onto `sample_id`, `prompt`, `eval_name`, `model_name`, `performance`, `cost` if the file uses other headers.
-- [ ] Write four arms into `arms` in role order, plus `held_out_arm`. The loader requires exactly those four names.
-- [ ] Keep MMLU, GSM8K, MBPP, and MT-Bench when the printed names contain them. Store the file’s exact strings. Set `mix_eval` to MT-Bench, or, if it is absent, to the locked eval where the cheap arm’s mean quality is lowest.
-- [ ] Pivot to one row per `sample_id` with quality and cost for each role and for the held-out model. Drop a query that is missing a finite value for any of the four arms.
-- [ ] Split ids 70/30, `random_state=0`, stratified by `eval_name`. The two id sets are disjoint.
-- [ ] Embed prompts with MiniLM, save the arrays, fit PCA on train embeddings only, append a column of ones.
-- [ ] Done when a five-row print shows finite quality and cost for every arm, the id intersection is empty, and a test context has length 65. `pca.n_samples_` equals the train prompt count.
+- [x] Write four arms into `arms` in role order, plus `held_out_arm`. The loader requires exactly those four names.
+- [x] Keep MMLU, GSM8K, MBPP, and MT-Bench when the printed names contain them. Store the file’s exact strings. Set `mix_eval` to MT-Bench, or, if it is absent, to the locked eval where the cheap arm’s mean quality is lowest.
+- [x] Pivot to one row per `sample_id` with quality and cost for each role and for the held-out model. Drop a query that is missing a finite value for any of the four arms.
+- [x] Split ids 70/30, `random_state=0`, stratified by `eval_name`. The two id sets are disjoint.
+- [x] Embed prompts with MiniLM, save the arrays, fit PCA on train embeddings only, append a column of ones.
+- [x] Done when a five-row print shows finite quality and cost for every arm, the id intersection is empty, and a test context has length 65. `pca.n_samples_` equals the train prompt count.
 
 ## 3. Simulator and checks (i) and (ii)
 
