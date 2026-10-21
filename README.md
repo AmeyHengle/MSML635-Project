@@ -49,7 +49,7 @@ These are the proposal. Changing them changes the question.
 
 1. Four arms, chosen after printing the real `model_name` values: cheap open, mid-tier, strong open, frontier (the name that contains `GPT-4` when one exists). One more model is held out for shift S1.
 2. Eval sets: MMLU, GSM8K, MBPP, and MT-Bench when that `eval_name` is present.
-3. Split `sample_id` 70/30, stratified by `eval_name`, seed 0. Fit PCA and the cost maximum on train prompts only. Cache embeddings to disk.
+3. Split `sample_id` 70/30, stratified by eval family (mmlu, gsm8k, mbpp, mt-bench), seed 0. Fit PCA and the cost maximum on train prompts only. Cache embeddings to disk.
 4. Context: `all-MiniLM-L6-v2`, PCA width 64 by default, plus a constant 1. Bandit dimension is 65. Widths 32 and 128 appear only in the small ablation in task 5.
 5. Bandits are OBP `LinEpsilonGreedy`, `LinUCB`, and `LinTS` (`select_action`, `update_params`). The only custom policy is discounted LinUCB: on the chosen arm, \(A \leftarrow \gamma A + xx^\top\) and \(b \leftarrow \gamma b + rx\) (Russac et al., 2019).
 6. The supervised router trains on the train split and stays frozen on the test stream, including its cost table and its arm set. Bandits start cold on the test stream and update from the chosen reward only. That freeze is what makes the price shift visible.
@@ -136,11 +136,11 @@ debug_rows: null               # set an int for a smoke run; reported runs leave
 `src/data.py`, `scripts/prepare.py`. Outputs under `data/processed/`: the wide table, `split.json`, cached embeddings, `pca.joblib`, and context matrices.
 
 - [x] Download `routerbench_0shot.pkl` from `withmartian/routerbench` (~100 MB) with `huggingface_hub.hf_hub_download`.
-- [x] Print columns, `model_name` values, `eval_name` values, and per-model cost and performance ranges. Rename onto `sample_id`, `prompt`, `eval_name`, `model_name`, `performance`, `cost` if the file uses other headers.
-- [x] Write four arms into `arms` in role order, plus `held_out_arm`. The loader requires exactly those four names.
-- [x] Keep MMLU, GSM8K, MBPP, and MT-Bench when the printed names contain them. Store the file’s exact strings. Set `mix_eval` to MT-Bench, or, if it is absent, to the locked eval where the cheap arm’s mean quality is lowest.
+- [x] The Hub pickle is wide (`model` and `model|total_cost`). `load_long` turns it into `sample_id`, `prompt`, `eval_name`, `model_name`, `performance`, `cost`.
+- [x] Four arms and `held_out_arm` are read from the config, in role order. The loader requires exactly those four names. `mix_eval` is `mtbench`.
+- [x] Keep rows whose `eval_name` matches MMLU, GSM8K (including `grade-school-math`), MBPP, or MT-Bench.
 - [x] Pivot to one row per `sample_id` with quality and cost for each role and for the held-out model. Drop a query that is missing a finite value for any of the four arms.
-- [x] Split ids 70/30, `random_state=0`, stratified by `eval_name`. The two id sets are disjoint.
+- [x] Split ids 70/30, `random_state=0`, stratified by those four families. The two id sets are disjoint.
 - [x] Embed prompts with MiniLM, save the arrays, fit PCA on train embeddings only, append a column of ones.
 - [x] Done when a five-row print shows finite quality and cost for every arm, the id intersection is empty, and a test context has length 65. `pca.n_samples_` equals the train prompt count.
 
