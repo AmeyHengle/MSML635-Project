@@ -8,7 +8,7 @@ The project is finished when the four boxes in [Done](#done) are checked. The de
 
 ## Progress
 
-- [ ] 1. Setup
+- [x] 1. Setup
 - [ ] 2. Data and features
 - [ ] 3. Simulator and checks (i) and (ii)
 - [ ] 4. Policies, sanity check (v), synthetic check (iii)
@@ -99,11 +99,11 @@ Tasks 5–8 use the same artifacts and the same config.
 
 ## 1. Setup
 
-- [ ] Create the tree in [Code layout](#code-layout), plus `requirements.txt` and `.gitignore` (`.venv/`, `__pycache__/`, `*.pkl`, `data/`, `results/`).
-- [ ] Pin Python 3.11 and install `obp`, `sentence-transformers`, `scikit-learn`, `pandas`, `numpy`, `joblib`, `pyyaml`, `huggingface_hub`, `pytest`, `matplotlib`. Record `name==version` for each.
-- [ ] Paste the config below into `configs/default.yaml`.
-- [ ] `tests/test_core.py` starts with one test that imports `obp.policy.LinUCB`.
-- [ ] Done when `python -c "from obp.policy import LinUCB"` works and `pytest` passes.
+- [x] Create the tree in [Code layout](#code-layout), plus `requirements.txt` and `.gitignore` (`.venv/`, `__pycache__/`, `*.pkl`, `data/`, `results/`).
+- [x] Pin Python 3.11 and install `obp`, `sentence-transformers`, `scikit-learn`, `pandas`, `numpy`, `joblib`, `pyyaml`, `huggingface_hub`, `pytest`, `matplotlib`. Record `name==version` for each.
+- [x] Paste the config below into `configs/default.yaml`.
+- [x] `tests/test_core.py` starts with one test that imports `obp.policy.LinUCB`.
+- [x] Done when `python -c "from obp.policy import LinUCB"` works and `pytest` passes.
 
 ```yaml
 seed: 0

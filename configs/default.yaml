@@ -1,0 +1,23 @@
+seed: 0
+seeds: [0, 1, 2, 3, 4]
+arms: []                       # task 2: four model_name strings, role order
+arm_roles: [cheap, mid, strong_open, frontier]
+held_out_arm: null
+eval_names: []
+mix_eval: null                 # MT-Bench, or the weakest cheap-model eval
+embedding: sentence-transformers/all-MiniLM-L6-v2
+pca_dim: 64
+pca_dims_ablation: [32, 64, 128]
+lambdas: [0.0, 0.5, 1.0, 2.0]
+lambda_main: 1.0
+epsilon: 0.1
+alpha: 1.0
+gamma: 0.99
+ridge: 1.0
+tau: 0.5
+t0_fraction: 0.5
+price_multiplier: 4.0
+quality_scale: 0.5
+mix_fraction: 0.8
+recovery_window: 100
+debug_rows: null               # set an int for a smoke run; reported runs leave this null
