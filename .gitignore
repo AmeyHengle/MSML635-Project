@@ -4,3 +4,4 @@ __pycache__/
 *.pkl
 data/
 results/
+additional_docs/

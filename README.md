@@ -10,7 +10,7 @@ The project is finished when the four boxes in [Done](#done) are checked. The de
 
 - [x] 1. Setup
 - [x] 2. Data and features
-- [ ] 3. Simulator and checks (i) and (ii)
+- [x] 3. Simulator and checks (i) and (ii)
 - [ ] 4. Policies, sanity check (v), synthetic check (iii)
 - [ ] 5. Stationary comparison, RQ1
 - [ ] 6. Shifts, RQ2
@@ -148,11 +148,11 @@ debug_rows: null               # set an int for a smoke run; reported runs leave
 
 `src/sim.py`. An episode yields the context and, after `act`, the chosen reward. The full reward matrix stays inside the simulator for the oracle.
 
-- [ ] Implement quality mapping, train-max normalization, \(r = q - \lambda\tilde{c}\), the oracle, and regret. The held-out arm’s cost stays out of the training maximum. Later shifts reuse that maximum.
-- [ ] `run_episode(policy, stream, update)` calls `policy.act(x) -> int` and, when `update` is true, `policy.update(x, a, r)` with the chosen reward only.
-- [ ] Check (i) in `tests/test_core.py`, with hand-written expected numbers. Qualities `(1.0, 0.0)`, normalized costs `(0.25, 1.0)`, \(\lambda = 1\) give rewards `(0.75, -1.0)` and regret `1.75` for arm 1. A raw cost of `1.5` with train max `1.0` normalizes to `1.0`. Tied rewards select the cheaper arm.
-- [ ] Check (ii): on a fixed synthetic matrix of length 2000, every arm’s reward is at most the oracle reward. A uniform policy’s `regret(t)/t` at \(t = 2000\) and at \(t = 1000\) differ by less than 10% relative.
-- [ ] Done when `pytest tests/test_core.py` passes offline.
+- [x] Implement quality mapping, train-max normalization, \(r = q - \lambda\tilde{c}\), the oracle, and regret. The held-out arm’s cost stays out of the training maximum. Later shifts reuse that maximum.
+- [x] `run_episode(policy, stream, update)` calls `policy.act(x) -> int` and, when `update` is true, `policy.update(x, a, r)` with the chosen reward only.
+- [x] Check (i) in `tests/test_core.py`, with hand-written expected numbers. Qualities `(1.0, 0.0)`, normalized costs `(0.25, 1.0)`, \(\lambda = 1\) give rewards `(0.75, -1.0)` and regret `1.75` for arm 1. A raw cost of `1.5` with train max `1.0` normalizes to `1.0`. Tied rewards select the cheaper arm.
+- [x] Check (ii): on a fixed synthetic matrix of length 2000, every arm’s reward is at most the oracle reward. A uniform policy’s `regret(t)/t` at \(t = 2000\) and at \(t = 1000\) differ by less than 10% relative.
+- [x] Done when `pytest tests/test_core.py` passes offline.
 
 ## 4. Policies, sanity check (v), synthetic check (iii)
 
