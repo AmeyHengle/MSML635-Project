@@ -192,3 +192,103 @@ def test_check_ii_oracle_upper_bound_and_uniform_regret():
     # Differ by less than 10% relative: |r2 - r1| / r1 < 0.10
     rel_diff = abs(regret_2000 - regret_1000) / regret_1000
     assert rel_diff < 0.10, f"Relative difference {rel_diff:.4f} >= 0.10 (regret@1000={regret_1000:.4f}, regret@2000={regret_2000:.4f})"
+
+
+def test_check_iii_synthetic_linear_bandit():
+    """Check (iii): synthetic linear bandit, d=10, 4 arms, T=5000, noise N(0, 0.1^2), one seed.
+
+    LinUCB's regret(T)/T is below regret(T/2)/(T/2).
+    Uniform random's two ratios differ by less than 10% relative.
+    Discounted LinUCB runs on the same draws and returns actions in {0,1,2,3}.
+    """
+    import numpy as np
+
+    from src.policies import DiscountedLinUCB, LinUCBPolicy, UniformRandomPolicy
+    from src.sim import QueryStream, run_episode
+
+    rng = np.random.default_rng(0)
+    d = 10
+    K = 4
+    T = 5000
+
+    # Synthetic linear bandit true parameters
+    theta_star = rng.normal(scale=1.0, size=(K, d))
+
+    contexts = rng.normal(size=(T, d))
+    norms = np.linalg.norm(contexts, axis=1, keepdims=True)
+    contexts = contexts / np.maximum(norms, 1e-6)
+
+    # Expected reward: theta_star @ x
+    expected_rewards = contexts @ theta_star.T  # (T, K)
+    noise = rng.normal(loc=0.0, scale=0.1, size=(T, K))
+    noisy_rewards = expected_rewards + noise
+
+    # Cost is 0 so reward equals quality
+    costs = np.zeros((T, K))
+    stream = QueryStream(contexts=contexts, rewards=noisy_rewards, costs=costs, qualities=noisy_rewards)
+
+    # LinUCB
+    linucb = LinUCBPolicy(dim=d, n_actions=K, alpha=1.0, seed=0)
+    result_ucb = run_episode(linucb, stream, update=True)
+
+    ratio_half_ucb = result_ucb.cumulative_regrets[T // 2 - 1] / (T / 2)
+    ratio_full_ucb = result_ucb.cumulative_regrets[T - 1] / float(T)
+    assert ratio_full_ucb < ratio_half_ucb, f"LinUCB average regret did not decrease: {ratio_full_ucb} >= {ratio_half_ucb}"
+
+    # Uniform random
+    uniform = UniformRandomPolicy(n_actions=K, random_state=0)
+    result_uni = run_episode(uniform, stream, update=True)
+    ratio_half_uni = result_uni.cumulative_regrets[T // 2 - 1] / (T / 2)
+    ratio_full_uni = result_uni.cumulative_regrets[T - 1] / float(T)
+    rel_diff_uni = abs(ratio_full_uni - ratio_half_uni) / ratio_half_uni
+    assert rel_diff_uni < 0.10, f"Uniform random ratios differ by {rel_diff_uni:.4f} >= 0.10"
+
+    # Discounted LinUCB
+    dlinucb = DiscountedLinUCB(dim=d, n_actions=K, gamma=0.99, alpha=1.0, ridge=1.0, random_state=0)
+    result_ducb = run_episode(dlinucb, stream, update=True)
+    assert set(result_ducb.actions).issubset({0, 1, 2, 3})
+    assert len(result_ducb.actions) == T
+
+
+def test_all_policies_interface():
+    """Verify all policy classes implement act, update, and propensity."""
+    import numpy as np
+
+    from src.policies import (
+        AlwaysCheapPolicy,
+        AlwaysFrontierPolicy,
+        CascadePolicy,
+        DiscountedLinUCB,
+        LinEpsilonGreedyPolicy,
+        LinTSPolicy,
+        LinUCBPolicy,
+        SupervisedRidgePolicy,
+        UniformRandomPolicy,
+    )
+
+    d = 4
+    K = 4
+    x = np.ones(d)
+
+    cheap = AlwaysCheapPolicy(cheap_arm=0, n_actions=K)
+    frontier = AlwaysFrontierPolicy(frontier_arm=3, n_actions=K)
+    uni = UniformRandomPolicy(n_actions=K, random_state=0)
+    ucb = LinUCBPolicy(dim=d, n_actions=K, alpha=1.0, seed=0)
+    ts = LinTSPolicy(dim=d, n_actions=K, seed=0)
+    eps = LinEpsilonGreedyPolicy(dim=d, n_actions=K, epsilon=0.1, seed=0)
+    ducb = DiscountedLinUCB(dim=d, n_actions=K, gamma=0.99, alpha=1.0, ridge=1.0, random_state=0)
+
+    # Supervised and Cascade
+    X_train = np.random.default_rng(0).normal(size=(20, d))
+    q_train = np.random.default_rng(0).uniform(size=(20, K))
+    costs = [0.1, 0.3, 0.6, 1.0]
+    sup = SupervisedRidgePolicy.fit(X_train, q_train, costs, ridge_alpha=1.0, lambda_weight=1.0)
+    cascade = CascadePolicy(sup, tau=0.5)
+
+    policies = [cheap, frontier, uni, ucb, ts, eps, ducb, sup, cascade]
+    for p in policies:
+        a = p.act(x)
+        assert a in range(K)
+        p.update(x, a, 0.5)
+        prop = p.propensity(x, a)
+        assert 0.0 <= prop <= 1.0

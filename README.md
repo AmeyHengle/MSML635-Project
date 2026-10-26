@@ -11,7 +11,7 @@ The project is finished when the four boxes in [Done](#done) are checked. The de
 - [x] 1. Setup
 - [x] 2. Data and features
 - [x] 3. Simulator and checks (i) and (ii)
-- [ ] 4. Policies, sanity check (v), synthetic check (iii)
+- [x] 4. Policies, sanity check (v), synthetic check (iii)
 - [ ] 5. Stationary comparison, RQ1
 - [ ] 6. Shifts, RQ2
 - [ ] 7. Off-policy evaluation, RQ3, check (iv)
@@ -158,16 +158,16 @@ debug_rows: null               # set an int for a smoke run; reported runs leave
 
 All of this lives in `src/policies.py`. Every policy implements `act`, `update`, and `propensity`. Frozen policies leave `update` empty.
 
-- [ ] Always-cheap and always-expensive: lowest and highest train-set mean raw cost. Uniform: propensity `1/4`. Oracle: for scoring.
-- [ ] Supervised: one `Ridge` per arm, `fit_intercept=False`, `alpha=ridge`, fit on train qualities. Choose \(\arg\max_a \hat{q}(x,a) - \lambda\tilde{c}(a)\) with the pre-shift cost.
-- [ ] Cascade: walk cheap → mid → strong → frontier and stop at the first arm whose predicted quality is at least `tau` (0.5). Otherwise pick frontier.
-- [ ] Wrap OBP `LinEpsilonGreedy` (this is the proposal’s \(\varepsilon\)-greedy), `LinUCB`, and `LinTS` with `dim=65`, `n_actions=4`, `len_list=1`. Pass `context.reshape(1, -1)` and read action index 0. `LinEpsilonGreedy` propensity is \((1-\varepsilon)+\varepsilon/K\) on the greedy arm and \(\varepsilon/K\) otherwise.
-- [ ] Discounted LinUCB, cited in the docstring to Russac, Vernade, and Cappé (2019). Initialize \(A = \mathrm{ridge}\cdot I\), \(b = 0\). Update the chosen arm with \(A \leftarrow \gamma A + xx^\top\), \(b \leftarrow \gamma b + rx\). Select with the usual linear UCB score.
-- [ ] RouteLLM, optional: the pretrained controller on the cheap-vs-frontier pair only, threshold chosen on the train split, then frozen. Follow [lm-sys/RouteLLM](https://github.com/lm-sys/RouteLLM). If it is not running after one sitting, write the error in `results/sanity.md` and continue.
-- [ ] Sanity check (v): on each locked eval, mean quality and mean raw cost of always-cheap and always-expensive. `results/sanity.md` places those pairs next to Hu et al. (2024): the expensive arm costs more and scores higher. If that ordering is reversed on a locked eval, fix the arm roles before task 5.
-- [ ] Check (iii): synthetic linear bandit, \(d=10\), 4 arms, \(T=5000\), noise \(\mathcal{N}(0, 0.1^2)\), one seed. LinUCB’s `regret(T)/T` is below `regret(T/2)/(T/2)`. Uniform random’s two ratios differ by less than 10% relative. Discounted LinUCB runs on the same draws and returns actions in `{0,1,2,3}`.
-- [ ] Run one short RouterBench episode (`debug_rows: 200`) with LinUCB and with discounted LinUCB, then set `debug_rows` back to null.
-- [ ] Done when `pytest` passes, `results/sanity.md` records the ordering, and the smoke episode finishes.
+- [x] Always-cheap and always-expensive: lowest and highest train-set mean raw cost. Uniform: propensity `1/4`. Oracle: for scoring.
+- [x] Supervised: one `Ridge` per arm, `fit_intercept=False`, `alpha=ridge`, fit on train qualities. Choose \(\arg\max_a \hat{q}(x,a) - \lambda\tilde{c}(a)\) with the pre-shift cost.
+- [x] Cascade: walk cheap → mid → strong → frontier and stop at the first arm whose predicted quality is at least `tau` (0.5). Otherwise pick frontier.
+- [x] Wrap OBP `LinEpsilonGreedy` (this is the proposal’s \(\varepsilon\)-greedy), `LinUCB`, and `LinTS` with `dim=65`, `n_actions=4`, `len_list=1`. Pass `context.reshape(1, -1)` and read action index 0. `LinEpsilonGreedy` propensity is \((1-\varepsilon)+\varepsilon/K\) on the greedy arm and \(\varepsilon/K\) otherwise.
+- [x] Discounted LinUCB, cited in the docstring to Russac, Vernade, and Cappé (2019). Initialize \(A = \mathrm{ridge}\cdot I\), \(b = 0\). Update the chosen arm with \(A \leftarrow \gamma A + xx^\top\), \(b \leftarrow \gamma b + rx\). Select with the usual linear UCB score.
+- [x] RouteLLM, optional: the pretrained controller on the cheap-vs-frontier pair only, threshold chosen on the train split, then frozen. Follow [lm-sys/RouteLLM](https://github.com/lm-sys/RouteLLM). If it is not running after one sitting, write the error in `results/sanity.md` and continue.
+- [x] Sanity check (v): on each locked eval, mean quality and mean raw cost of always-cheap and always-expensive. `results/sanity.md` places those pairs next to Hu et al. (2024): the expensive arm costs more and scores higher. If that ordering is reversed on a locked eval, fix the arm roles before task 5.
+- [x] Check (iii): synthetic linear bandit, \(d=10\), 4 arms, \(T=5000\), noise \(\mathcal{N}(0, 0.1^2)\), one seed. LinUCB’s `regret(T)/T` is below `regret(T/2)/(T/2)`. Uniform random’s two ratios differ by less than 10% relative. Discounted LinUCB runs on the same draws and returns actions in `{0,1,2,3}`.
+- [x] Run one short RouterBench episode (`debug_rows: 200`) with LinUCB and with discounted LinUCB, then set `debug_rows` back to null.
+- [x] Done when `pytest` passes, `results/sanity.md` records the ordering, and the smoke episode finishes.
 
 ## 5. Stationary comparison, RQ1
 

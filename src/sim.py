@@ -247,6 +247,7 @@ def build_query_stream(
     train_max_cost: float,
     lambda_weight: float = 1.0,
     include_held_out: bool = False,
+    split_reference_ids: list[str] | None = None,
 ) -> QueryStream:
     """Build a QueryStream for a specified split (e.g. test set)."""
     id_to_idx = {str(sid): i for i, sid in enumerate(wide["sample_id"].astype(str))}
@@ -257,7 +258,20 @@ def build_query_stream(
         roles.append("held_out")
 
     sub_df = wide.iloc[row_indices]
-    sub_contexts = contexts[row_indices]
+
+    if len(contexts) == len(wide):
+        sub_contexts = contexts[row_indices]
+    elif len(contexts) == len(split_ids):
+        sub_contexts = contexts
+    elif split_reference_ids is not None:
+        ref_to_idx = {str(sid): i for i, sid in enumerate(split_reference_ids)}
+        context_indices = [ref_to_idx[str(sid)] for sid in split_ids]
+        sub_contexts = contexts[context_indices]
+    else:
+        raise ValueError(
+            f"contexts shape {contexts.shape} does not match wide ({len(wide)}) "
+            f"or split_ids ({len(split_ids)}) and no split_reference_ids provided"
+        )
 
     qualities = sub_df[[f"quality_{role}" for role in roles]].to_numpy(dtype=float)
     raw_costs = sub_df[[f"cost_{role}" for role in roles]].to_numpy(dtype=float)
