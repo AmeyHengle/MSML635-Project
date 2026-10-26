@@ -23,7 +23,12 @@ dependencies = [
 [project.optional-dependencies]
 embed = ["sentence-transformers>=5.0", "torch>=2.2"]
 data = ["datasets>=3.0", "huggingface-hub>=0.26", "pyarrow>=17.0"]
-dev = ["pytest>=8.2", "pytest-cov>=5.0", "ruff>=0.6"]
+dev = [
+    "ipykernel>=7.4.0",
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -39,3 +44,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.4.0",
+]
