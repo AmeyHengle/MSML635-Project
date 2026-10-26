@@ -1,6 +1,6 @@
 # Adaptive Model Selection for LLMs Using Contextual Bandits
 
-Build guide for the MSML635 proposal ([PDF](../MSML635%20Project%20Proposal.pdf)). Check a box when that step is done. Check the matching box under [Progress](#progress) when the task’s last box is done. Anyone can take the next open task. No task is assigned to a named person.
+Build guide for the MSML635 proposal ([PDF](../MSML635_Project.pdf)). Check a box when that step is done. Check the matching box under [Progress](#progress) when the task’s last box is done. Anyone can take the next open task. No task is assigned to a named person.
 
 Replay [RouterBench](https://huggingface.co/datasets/withmartian/routerbench). The simulator stores every model’s quality and cost, and the policy sees only the arm it chose. Results go in `results/` and `report/REPORT.md`. The notes in [`ideas/`](ideas/README.md) stay as they are.
 
@@ -91,7 +91,7 @@ flowchart LR
 Tasks 5–8 use the same artifacts and the same config.
 
 - [ ] One command, `python scripts/run.py --exp all`, rebuilds every reported number from `configs/default.yaml`.
-- [ ] Score every method against the same oracle. Halt if any method’s reward on a query exceeds the oracle.
+- [x] Score every method against the same oracle. Halt if any method’s reward on a query exceeds the oracle.
 - [ ] Write `results/summary.csv` with one row per method, seed, \(\lambda\), PCA width, and scenario.
 - [ ] Scalar intervals: average the five seeds’ per-query values, resample test queries 1000 times, and take the 2.5 and 97.5 percentiles. Regret and recovery plots show the mean across seeds.
 
