@@ -2531,6 +2531,7 @@ data = [
 ]
 dev = [
     { name = "ipykernel" },
+    { name = "jinja2" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -2550,6 +2551,7 @@ requires-dist = [
     { name = "datasets", marker = "extra == 'data'", specifier = ">=3.0" },
     { name = "huggingface-hub", marker = "extra == 'data'", specifier = ">=0.26" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.6" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },

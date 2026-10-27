@@ -14,3 +14,31 @@ data/*
 results/*
 !results/figures/
 !results/figures/**
+
+# Full RouterBench release: large, and not ours to redistribute
+data/raw/
+# Keep the subsample fixture and the interim results and figures in git
+!data/fixtures/
+!data/fixtures/**
+!results/fixture/
+!results/figures/
+# Per-cell experiment caches (merged rq*.csv files are committed)
+results/*/cells/
+# Personal one-off scripts (also skipped by ruff)
+scratch/
+# LaTeX build files
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+# Python and tooling
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
