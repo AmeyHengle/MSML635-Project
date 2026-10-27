@@ -1,0 +1,19 @@
+building setup ...
+  data: 5k subsample, 4,982 queries, 11 arms
+  rq1 lambda=0     done
+  rq1 lambda=1     done
+  rq1 lambda=2     done
+  rq1 lambda=5     done
+  rq1 lambda=10    done
+  rq1 lambda=15    done
+  rq1 lambda=20    done
+  rq1 lambda=30    done
+  rq1 lambda=50    done
+rq1: 450 rows -> /home/claude/out/results/rq1.csv  [269.9s]
+  rq3 seed=0 done
+  rq3 seed=1 done
+  rq3 seed=2 done
+  rq3 seed=3 done
+  rq3 seed=4 done
+rq3: 135 rows -> /home/claude/out/results/rq3.csv  [63.3s]
+EXIT=0

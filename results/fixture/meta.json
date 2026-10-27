@@ -1,0 +1,28 @@
+{
+  "source": "fixture",
+  "data_file": "data/fixtures/rb0_sample5k.parquet",
+  "n_queries": 4982,
+  "n_arms": 11,
+  "n_stream": 3486,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "lambda_grid": [
+    0.0,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    15.0,
+    20.0,
+    30.0,
+    50.0
+  ],
+  "lambda_ref": 10.0,
+  "feature_dim": 32,
+  "created_utc": "2026-10-27T00:49:04+00:00"
+}
