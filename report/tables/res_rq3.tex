@@ -1,0 +1,18 @@
+\begin{tabular}{llrrr}
+\toprule
+Logging policy & Est. & Bias & RMSE & $\min p$ \\
+\midrule
+uniform & DR & -0.0074 & 0.0165 & 0.091 \\
+ & IPS & -0.0187 & 0.0262 & 0.091 \\
+ & SNIPS & -0.0061 & 0.0167 & 0.091 \\
+\addlinespace
+eps-greedy(0.3) & DR & +0.0023 & 0.0275 & 0.027 \\
+ & IPS & +0.0129 & 0.0489 & 0.027 \\
+ & SNIPS & -0.0038 & 0.0247 & 0.027 \\
+\addlinespace
+eps-greedy(0.1) & DR & -0.0149 & 0.0641 & 0.009 \\
+ & IPS & -0.0174 & 0.1018 & 0.009 \\
+ & SNIPS & -0.0014 & 0.0599 & 0.009 \\
+\addlinespace
+\bottomrule
+\end{tabular}

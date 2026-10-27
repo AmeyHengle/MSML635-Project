@@ -1,0 +1,16 @@
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Reward & \% Sup. & Quality & Cost (\$) & Regret & Oracle \% \\
+\midrule
+Per-query oracle & $0.8590\pm0.0000$ & 140.8 & 0.9017 & 1.49e-04 & 0 & 100.0 \\
+Supervised (full info) & $0.6101\pm0.0000$ & 100.0 & 0.6785 & 2.39e-04 & 868 & 14.9 \\
+LinTS & $0.5881\pm0.0046$ & 96.4 & 0.6460 & 2.03e-04 & 944 & 14.6 \\
+LinUCB & $0.5836\pm0.0106$ & 95.7 & 0.6354 & 1.81e-04 & 960 & 16.8 \\
+Discounted LinUCB & $0.5806\pm0.0075$ & 95.2 & 0.6336 & 1.85e-04 & 970 & 16.4 \\
+Zero Router & $0.5780\pm0.0024$ & 94.7 & 0.6361 & 2.03e-04 & 980 & 14.8 \\
+$\epsilon$-greedy & $0.5475\pm0.0096$ & 89.7 & 0.6200 & 2.54e-04 & 1086 & 15.6 \\
+Always cheapest & $0.2875\pm0.0000$ & 47.1 & 0.3003 & 4.50e-05 & 1992 & 32.0 \\
+Random & $0.2767\pm0.0135$ & 45.3 & 0.5172 & 8.42e-04 & 2030 & 8.8 \\
+Always premium & $-0.1437\pm0.0000$ & -23.6 & 0.7740 & 3.21e-03 & 3495 & 1.8 \\
+\bottomrule
+\end{tabular}
