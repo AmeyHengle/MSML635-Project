@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 from common import LAMBDA_REF, REPO, RESULTS
 
+from router_bandit.evaluation import (
+    average_performance_gap_recovered,
+    cost_performance_threshold,
+)
+
 TABDIR = REPO / "report" / "tables"
 TABDIR.mkdir(parents=True, exist_ok=True)
 
@@ -33,14 +38,37 @@ def write(text: str, name: str) -> None:
     print(f"saved -> report/tables/{name}.tex")
 
 
+def _blank(value: float, spec: str) -> str:
+    """Render a missing recovery or threshold as an empty-looking dash."""
+    if pd.isna(value):
+        return "--"
+    return format(value, spec)
+
+
+def _ci(lo: float, hi: float, spec: str = ".4f") -> str:
+    if pd.isna(lo) or pd.isna(hi):
+        return "--"
+    return f"$[{format(lo, spec)},{format(hi, spec)}]$"
+
+
 def table_rq1() -> None:
     df = pd.read_csv(RESULTS / "rq1.csv")
     ref = df[np.isclose(df["lam"], LAMBDA_REF)]
+    if "heldout_reward" not in ref.columns:
+        _table_rq1_stream(ref)
+        print("rq1.csv has no held-out columns; wrote the stream-only table")
+        return
+    _table_rq1_heldout(ref)
+    _table_rq1_latency(ref)
+    _table_apgr(df)
+
+
+def _table_rq1_stream(ref: pd.DataFrame) -> None:
+    """Stream means, for a results file written before frozen held-out eval."""
     agg = ref.groupby("policy").agg(
         reward=("mean_reward", "mean"), reward_sd=("mean_reward", "std"),
         quality=("mean_quality", "mean"), cost=("mean_dollar_cost", "mean"),
         regret=("total_regret", "mean"), match=("oracle_match", "mean"),
-        esc=("escalation_rate", "mean"),
     ).reset_index().sort_values("reward", ascending=False)
 
     sup = float(agg.loc[agg["policy"] == "Supervised(ridge)", "reward"].iloc[0])
@@ -58,6 +86,89 @@ def table_rq1() -> None:
         )
     lines += [r"\bottomrule", r"\end{tabular}"]
     write("\n".join(lines), "res_rq1")
+
+
+def _table_rq1_heldout(ref: pd.DataFrame) -> None:
+    """Frozen held-out means at the reference lambda.
+
+    Seed-to-seed standard deviation is its own column. Each interval is the
+    mean of the per-seed bootstrap bounds, which were computed over queries.
+    """
+    agg = ref.groupby("policy").agg(
+        reward=("heldout_reward", "mean"), reward_sd=("heldout_reward", "std"),
+        reward_lo=("heldout_reward_lo", "mean"), reward_hi=("heldout_reward_hi", "mean"),
+        quality=("heldout_quality", "mean"),
+        quality_lo=("heldout_quality_lo", "mean"), quality_hi=("heldout_quality_hi", "mean"),
+        cost=("heldout_dollar_cost", "mean"),
+        cost_lo=("heldout_dollar_cost_lo", "mean"), cost_hi=("heldout_dollar_cost_hi", "mean"),
+        regret=("total_regret", "mean"), match=("oracle_match", "mean"),
+    ).reset_index().sort_values("reward", ascending=False)
+
+    sup = float(agg.loc[agg["policy"] == "Supervised(ridge)", "reward"].iloc[0])
+    lines = [
+        r"\begin{tabular}{lrrrrrrrrrr}", r"\toprule",
+        (
+            r"Policy & Reward & Seed SD & 95\% CI & Quality & 95\% CI & "
+            r"Cost (\$) & 95\% CI & \% Sup. & Regret & Oracle \% \\"
+        ),
+        r"\midrule",
+    ]
+    for _, r in agg.iterrows():
+        sd = 0.0 if np.isnan(r["reward_sd"]) else r["reward_sd"]
+        lines.append(
+            f"{pretty(r['policy'])} & {r['reward']:.4f} & {sd:.4f} & "
+            f"{_ci(r['reward_lo'], r['reward_hi'])} & {r['quality']:.4f} & "
+            f"{_ci(r['quality_lo'], r['quality_hi'])} & {r['cost']:.2e} & "
+            f"{_ci(r['cost_lo'], r['cost_hi'], '.2e')} & {100 * r['reward'] / sup:.1f} & "
+            f"{r['regret']:.0f} & {100 * r['match']:.1f} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    write("\n".join(lines), "res_rq1")
+
+
+def _table_rq1_latency(ref: pd.DataFrame) -> None:
+    agg = ref.groupby("policy").agg(
+        p50=("select_p50_s", "mean"), p99=("select_p99_s", "mean"),
+    ).reset_index().sort_values("p50")
+    lines = [
+        r"\begin{tabular}{lrr}", r"\toprule",
+        r"Policy & Select p50 (ms) & Select p99 (ms) \\",
+        r"\midrule",
+    ]
+    for _, r in agg.iterrows():
+        lines.append(
+            f"{pretty(r['policy'])} & {1e3 * r['p50']:.3f} & {1e3 * r['p99']:.3f} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    write("\n".join(lines), "res_rq1_latency")
+
+
+def _table_apgr(df: pd.DataFrame) -> None:
+    """APGR over the lambda grid, and the cheapest frontier point that recovers half the gap."""
+    by_lam = df.groupby(["policy", "lam"], as_index=False).agg(
+        pgr=("pgr", "mean"), cost=("heldout_dollar_cost", "mean"),
+    )
+    rows = []
+    for policy, grp in by_lam.groupby("policy"):
+        pgr = grp["pgr"].to_numpy()
+        cost = grp["cost"].to_numpy()
+        rows.append({
+            "policy": policy,
+            "apgr": average_performance_gap_recovered(pgr),
+            "cpt": cost_performance_threshold(cost, pgr),
+        })
+    agg = pd.DataFrame(rows).sort_values("apgr", ascending=False)
+    lines = [
+        r"\begin{tabular}{lrr}", r"\toprule",
+        r"Policy & APGR & CPT (\$) \\",
+        r"\midrule",
+    ]
+    for _, r in agg.iterrows():
+        lines.append(
+            f"{pretty(r['policy'])} & {_blank(r['apgr'], '.3f')} & {_blank(r['cpt'], '.2e')} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    write("\n".join(lines), "res_apgr")
 
 
 def table_rq2() -> None:
@@ -79,6 +190,31 @@ def table_rq2() -> None:
         r"\bottomrule", r"\end{tabular}",
     ]
     write("\n".join(lines), "res_rq2")
+    _table_rq2_recovery(df)
+
+
+def _table_rq2_recovery(df: pd.DataFrame) -> None:
+    """Post-shift regret is the headline; departure and return are blank when absent."""
+    if "departed_at" not in df.columns:
+        print("rq2.csv has no recovery columns; skipped the recovery table")
+        return
+    agg = df.groupby(["policy", "scenario"], as_index=False).agg(
+        regret=("post_regret", "mean"),
+        departed=("departed_at", "mean"),
+        recover=("rounds_to_recover", "mean"),
+    )
+    lines = [
+        r"\begin{tabular}{llrrr}", r"\toprule",
+        r"Policy & Scenario & Post-shift regret & Departed & Recovered \\",
+        r"\midrule",
+    ]
+    for _, r in agg.iterrows():
+        lines.append(
+            f"{pretty(r['policy'])} & {r['scenario']} & {r['regret']:.1f} & "
+            f"{_blank(r['departed'], '.0f')} & {_blank(r['recover'], '.0f')} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    write("\n".join(lines), "res_rq2_recovery")
 
 
 def table_rq3() -> None:

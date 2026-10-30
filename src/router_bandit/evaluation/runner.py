@@ -9,6 +9,7 @@ has committed to its action.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,6 +33,7 @@ class RunResult:
     propensities: np.ndarray
     oracle_rewards: np.ndarray
     oracle_actions: np.ndarray
+    select_times: np.ndarray
     log: DecisionLog | None = None
 
     @property
@@ -63,6 +65,16 @@ class RunResult:
         """Fraction of rounds the policy picked the oracle arm."""
         return float((self.actions == self.oracle_actions).mean())
 
+    @property
+    def select_p50(self) -> float:
+        """Median ``policy.select`` latency, in seconds."""
+        return _latency_percentile(self.select_times, 50)
+
+    @property
+    def select_p99(self) -> float:
+        """99th percentile ``policy.select`` latency, in seconds."""
+        return _latency_percentile(self.select_times, 99)
+
     def summary(self) -> dict[str, float | str]:
         return {
             "policy": self.policy,
@@ -71,7 +83,16 @@ class RunResult:
             "mean_cost": self.mean_cost,
             "total_regret": self.total_regret,
             "oracle_match": self.oracle_match,
+            "select_p50_s": self.select_p50,
+            "select_p99_s": self.select_p99,
         }
+
+
+def _latency_percentile(times: np.ndarray, percentile: float) -> float:
+    times = np.asarray(times, dtype=np.float64)
+    if times.size == 0:
+        return float("nan")
+    return float(np.percentile(times, percentile))
 
 
 def run_policy(
@@ -80,8 +101,15 @@ def run_policy(
     *,
     log: bool = False,
     reset: bool = True,
+    update: bool = True,
 ) -> RunResult:
-    """Replay ``policy`` over the whole of ``env``."""
+    """Replay ``policy`` over the whole of ``env``.
+
+    ``update=False`` freezes the policy: ``select`` still runs, but nothing is
+    learned. Pair it with ``reset=False`` to score a policy that has already
+    been trained on another stream. ``reset=True`` still clears learned state
+    before the replay, which is what a fresh run wants.
+    """
     if reset:
         policy.reset()
 
@@ -91,6 +119,7 @@ def run_policy(
     costs = np.empty(T)
     actions = np.empty(T, dtype=np.int64)
     propensities = np.empty(T)
+    select_times = np.empty(T)
     logger = DecisionLogger() if log else None
 
     truth = env.truth
@@ -101,9 +130,12 @@ def run_policy(
         context = env.context(t)
         available = env.available_actions(t)
 
+        started = time.perf_counter()
         action, propensity = policy.select(t, context, available)
+        select_times[t] = time.perf_counter() - started
         outcome = env.step(t, action)
-        policy.update(t, context, action, outcome.reward)
+        if update:
+            policy.update(t, context, action, outcome.reward)
 
         rewards[t] = outcome.reward
         qualities[t] = outcome.quality
@@ -128,5 +160,6 @@ def run_policy(
         propensities=propensities,
         oracle_rewards=oracle_rewards,
         oracle_actions=oracle_actions,
+        select_times=select_times,
         log=logger.build() if logger is not None else None,
     )

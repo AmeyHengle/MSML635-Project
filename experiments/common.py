@@ -119,8 +119,9 @@ def check_or_write_meta(setup: Setup, *, force: bool = False) -> dict:
     """Record what produced this folder; refuse to mix incompatible runs.
 
     Cached cells are only valid for the configuration that produced them. If the
-    data size, seeds, lambda grid or feature dimension changed, reusing them
-    would silently mix results, so we stop and say how to proceed.
+    data size, seeds, lambda grid, feature dimension, or the recorded metric
+    columns changed, reusing them would silently mix results, so we stop and
+    say how to proceed.
     """
     current = {
         "source": SOURCE,
@@ -132,6 +133,9 @@ def check_or_write_meta(setup: Setup, *, force: bool = False) -> dict:
         "lambda_grid": LAMBDA_GRID,
         "lambda_ref": LAMBDA_REF,
         "feature_dim": DIM,
+        # Bump when a cell gains columns. Old cells lack held-out intervals,
+        # the two recovery fields, PGR, and select latency.
+        "metrics": "heldout-ci,recovery-v2,apgr,select-latency",
     }
     path = RESULTS / "meta.json"
     if path.exists() and not force:
@@ -178,6 +182,18 @@ def make_env(setup: Setup, lam: float, seed: int, schedule: ShiftSchedule | None
     order = schedule.build_order(setup.data.meta["family"], setup.splits.stream, order_rng)
     stream = build_stream(setup.data, setup.features, order, shuffle=False)
     return BanditEnv(stream, lam=lam, schedule=schedule, seed=seed), stream
+
+
+def make_heldout_env(setup: Setup, lam: float, seed: int):
+    """Stationary replay of the held-out split.
+
+    The split is never used for learning. Shuffling uses a different seed from
+    the stream so the frozen evaluation is not tied to the training order.
+    """
+    stream = build_stream(
+        setup.data, setup.features, setup.splits.heldout, seed=2000 + seed, shuffle=True
+    )
+    return BanditEnv(stream, lam=lam, seed=seed), stream
 
 
 def fit_supervised(setup: Setup, stream, lam: float, model: str = "ridge") -> SupervisedRouter:

@@ -29,8 +29,10 @@ from common import (
     check_or_write_meta,
     fit_supervised,
     make_env,
+    make_heldout_env,
 )
 
+from router_bandit.baselines import OraclePolicy
 from router_bandit.envs import (
     MixShift,
     PriceChange,
@@ -40,7 +42,10 @@ from router_bandit.envs import (
 from router_bandit.evaluation import (
     doubly_robust,
     fit_reward_model,
+    heldout_summary,
     ips,
+    performance_gap_recovered,
+    pool_reference_arms,
     recovery_time,
     routing_errors,
     run_policy,
@@ -61,13 +66,32 @@ def rq1(setup, force: bool = False) -> pd.DataFrame:
     def cell(lam: float, seed: int) -> pd.DataFrame:
         rows = []
         env, stream = make_env(setup, lam, seed)
+        held_env, held_stream = make_heldout_env(setup, lam, seed)
+        # Reference arms are properties of the pool, not of this lambda. Their
+        # quality is measured on the same held-out queries as the router.
+        weak, strong = pool_reference_arms(setup.data.cost.mean(0), setup.data.quality.mean(0))
+        q_held = held_stream.quality_matrix()
+        q_weak = float(q_held[:, weak].mean())
+        q_strong = float(q_held[:, strong].mean())
+
         for policy in build_policies(setup, stream, env, lam, seed):
             res = run_policy(env, policy)
+            # The oracle reads the env it was built with. Rebind it so the
+            # frozen replay scores the held-out queries, not the stream's.
+            frozen = OraclePolicy(held_env.truth) if policy.name == "Oracle" else policy
+            held = run_policy(held_env, frozen, reset=False, update=False)
             errs = routing_errors(res.actions, res.oracle_actions, setup.data.cost.mean(0))
+            dollar = setup.data.cost[held_stream.order, held.actions]
             rows.append({
                 "lam": lam, "seed": seed, **res.summary(),
                 "mean_dollar_cost": float(setup.data.cost[stream.order, res.actions].mean()),
                 **errs,
+                **heldout_summary(held.rewards, held.qualities, dollar, seed=seed),
+                "pgr": performance_gap_recovered(held.mean_quality, q_weak, q_strong),
+                # Frozen select, not the learning pass: this is the latency of
+                # the policy that would actually be served.
+                "select_p50_s": held.select_p50,
+                "select_p99_s": held.select_p99,
             })
         return pd.DataFrame(rows)
 
@@ -135,13 +159,19 @@ def rq2(setup, force: bool = False) -> pd.DataFrame:
         ]
         for policy in policies:
             res = run_policy(env, policy)
-            half = len(res.rewards) // 2
+            # Post-shift regret stays the headline. Departure and recovery are
+            # missing, not zero, when the policy never leaves the pre-shift band
+            # or never returns to it.
+            rec = recovery_time(res.rewards, t0)
             rows.append({
                 "scenario": name, "seed": seed, "t0": t0, **res.summary(),
                 "pre_reward": float(res.rewards[:t0].mean()),
                 "post_reward": float(res.rewards[t0:].mean()),
                 "post_regret": float(res.instant_regret[t0:].sum()),
-                "recovery": recovery_time(res.rewards, t0, window=min(200, half)),
+                "departed_at": np.nan if rec.departed_at is None else rec.departed_at,
+                "rounds_to_recover": (
+                    np.nan if rec.rounds_to_recover is None else rec.rounds_to_recover
+                ),
             })
         return pd.DataFrame(rows)
 
