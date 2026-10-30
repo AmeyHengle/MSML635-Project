@@ -16,7 +16,11 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["run_cascade"]
+__all__ = ["CASCADE_JUDGE_ERRORS", "run_cascade", "summarize_cascade"]
+
+# RouterBench's reported break points: cascades beat the Zero Router below
+# about 0.1 judge error and degrade sharply past 0.2.
+CASCADE_JUDGE_ERRORS = (0.0, 0.1, 0.2)
 
 
 def run_cascade(
@@ -81,3 +85,48 @@ def run_cascade(
         out_arm[i] = arm
 
     return {"quality": out_q, "cost": out_c, "n_calls": out_calls, "final_arm": out_arm}
+
+
+def summarize_cascade(
+    quality: np.ndarray,
+    cost_norm: np.ndarray,
+    lam: float,
+    *,
+    cost_scale: float,
+    judge_error: float = 0.0,
+    seed: int = 0,
+    threshold: float = 0.5,
+) -> dict[str, np.ndarray | float]:
+    """Score a cascade on one query set.
+
+    Reward charges the cumulative normalised cost of every attempt, including
+    the ones the judge rejected. Dollars are that cumulative cost times
+    ``cost_scale``, which is valid while the budget is unlimited: every
+    attempt is scaled by the same constant, so the dollar path and the
+    normalised path stop on the same arm.
+
+    The returned means are per query. ``mean_cost`` and ``mean_dollar_cost``
+    are means of that per-query total, which is the cascade's spend.
+    """
+    if cost_scale <= 0:
+        raise ValueError(f"cost_scale must be positive, got {cost_scale}")
+    out = run_cascade(
+        quality,
+        cost_norm,
+        judge_error=judge_error,
+        seed=seed,
+        threshold=threshold,
+    )
+    dollar = out["cost"] * float(cost_scale)
+    reward = out["quality"] - float(lam) * out["cost"]
+    return {
+        "quality": out["quality"],
+        "cost": out["cost"],
+        "dollar": dollar,
+        "reward": reward,
+        "final_arm": out["final_arm"],
+        "mean_quality": float(out["quality"].mean()),
+        "mean_cost": float(out["cost"].mean()),
+        "mean_dollar_cost": float(dollar.mean()),
+        "mean_reward": float(reward.mean()),
+    }

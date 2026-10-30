@@ -27,13 +27,19 @@ from common import (
     build_policies,
     build_setup,
     cached_cell,
+    calibration_stats,
     check_or_write_meta,
     fit_supervised,
     make_env,
     make_heldout_env,
 )
 
-from router_bandit.baselines import OraclePolicy
+from router_bandit.baselines import (
+    CASCADE_JUDGE_ERRORS,
+    OraclePolicy,
+    summarize_cascade,
+    zero_frontier_policies,
+)
 from router_bandit.envs import ShiftSchedule
 from router_bandit.evaluation import (
     doubly_robust,
@@ -67,6 +73,76 @@ from router_bandit.policies import (
 # --------------------------------------------------------------------------- #
 # RQ1 -- stationary: how close do bandits get to full information?
 # --------------------------------------------------------------------------- #
+def _rq1_row(setup, stream, held_stream, lam, seed, res, held, q_weak, q_strong, *, frontier: bool):
+    """One RQ1 record. ``frontier`` marks a hull-sweep Zero Router."""
+    errs = routing_errors(res.actions, res.oracle_actions, setup.data.cost.mean(0))
+    dollar = setup.data.cost[held_stream.order, held.actions]
+    return {
+        "lam": lam, "seed": seed, "frontier": frontier, **res.summary(),
+        "mean_dollar_cost": float(setup.data.cost[stream.order, res.actions].mean()),
+        **errs,
+        **heldout_summary(held.rewards, held.qualities, dollar, seed=seed),
+        "pgr": performance_gap_recovered(held.mean_quality, q_weak, q_strong),
+        # Frozen select, not the learning pass: this is the latency of the
+        # policy that would actually be served.
+        "select_p50_s": held.select_p50,
+        "select_p99_s": held.select_p99,
+    }
+
+
+def _score_policy(env, held_env, policy):
+    """Learn on ``env``, then freeze and replay ``held_env``."""
+    res = run_policy(env, policy)
+    # The oracle reads the env it was built with. Rebind it so the frozen
+    # replay scores the held-out queries, not the stream's.
+    frozen = OraclePolicy(held_env.truth) if policy.name == "Oracle" else policy
+    held = run_policy(held_env, frozen, reset=False, update=False)
+    return res, held
+
+
+def _cascade_rows(setup, stream, held_stream, env, held_env, lam, seed, q_weak, q_strong):
+    """Cascade rows at each judge-error rate.
+
+    The cascade pulls several arms per query, so it stays off ``run_policy``.
+    Quality, cumulative cost, and reward are filled on the same columns the
+    single-pull policies use. Select latency is empty: there is no
+    ``policy.select`` to time.
+    """
+    rows = []
+    oracle_actions = env.truth.oracle_actions()
+    oracle_rewards = env.truth.oracle_rewards()
+    mean_arm_cost = setup.data.cost.mean(0)
+    scale = setup.data.cost_scale
+    for err in CASCADE_JUDGE_ERRORS:
+        scored = summarize_cascade(
+            stream.quality_matrix(), stream.cost_matrix(), lam,
+            cost_scale=scale, judge_error=err, seed=seed,
+        )
+        held = summarize_cascade(
+            held_stream.quality_matrix(), held_stream.cost_matrix(), lam,
+            cost_scale=scale, judge_error=err, seed=seed,
+        )
+        errs = routing_errors(scored["final_arm"], oracle_actions, mean_arm_cost)
+        rows.append({
+            "lam": lam,
+            "seed": seed,
+            "frontier": False,
+            "policy": f"Cascade(e={err:g})",
+            "mean_reward": scored["mean_reward"],
+            "mean_quality": scored["mean_quality"],
+            "mean_cost": scored["mean_cost"],
+            "total_regret": float((oracle_rewards - scored["reward"]).sum()),
+            "oracle_match": float((scored["final_arm"] == oracle_actions).mean()),
+            "select_p50_s": np.nan,
+            "select_p99_s": np.nan,
+            "mean_dollar_cost": scored["mean_dollar_cost"],
+            **errs,
+            **heldout_summary(held["reward"], held["quality"], held["dollar"], seed=seed),
+            "pgr": performance_gap_recovered(held["mean_quality"], q_weak, q_strong),
+        })
+    return rows
+
+
 def rq1(setup, force: bool = False) -> pd.DataFrame:
     def cell(lam: float, seed: int) -> pd.DataFrame:
         rows = []
@@ -80,24 +156,24 @@ def rq1(setup, force: bool = False) -> pd.DataFrame:
         q_strong = float(q_held[:, strong].mean())
 
         for policy in build_policies(setup, stream, env, lam, seed):
-            res = run_policy(env, policy)
-            # The oracle reads the env it was built with. Rebind it so the
-            # frozen replay scores the held-out queries, not the stream's.
-            frozen = OraclePolicy(held_env.truth) if policy.name == "Oracle" else policy
-            held = run_policy(held_env, frozen, reset=False, update=False)
-            errs = routing_errors(res.actions, res.oracle_actions, setup.data.cost.mean(0))
-            dollar = setup.data.cost[held_stream.order, held.actions]
-            rows.append({
-                "lam": lam, "seed": seed, **res.summary(),
-                "mean_dollar_cost": float(setup.data.cost[stream.order, res.actions].mean()),
-                **errs,
-                **heldout_summary(held.rewards, held.qualities, dollar, seed=seed),
-                "pgr": performance_gap_recovered(held.mean_quality, q_weak, q_strong),
-                # Frozen select, not the learning pass: this is the latency of
-                # the policy that would actually be served.
-                "select_p50_s": held.select_p50,
-                "select_p99_s": held.select_p99,
-            })
+            res, held = _score_policy(env, held_env, policy)
+            rows.append(_rq1_row(
+                setup, stream, held_stream, lam, seed, res, held, q_weak, q_strong,
+                frontier=False,
+            ))
+        # The hull sweep is one curve of target costs. It does not depend on
+        # lambda, so it is recorded once, at the reference lambda.
+        if np.isclose(lam, LAMBDA_REF):
+            mean_cost, mean_quality = calibration_stats(setup)
+            for policy in zero_frontier_policies(mean_cost, mean_quality, seed=seed):
+                res, held = _score_policy(env, held_env, policy)
+                rows.append(_rq1_row(
+                    setup, stream, held_stream, lam, seed, res, held, q_weak, q_strong,
+                    frontier=True,
+                ))
+        rows.extend(_cascade_rows(
+            setup, stream, held_stream, env, held_env, lam, seed, q_weak, q_strong,
+        ))
         return pd.DataFrame(rows)
 
     frames = [

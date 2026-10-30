@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from common import LAMBDA_REF, REPO, RESULTS
+from common import LAMBDA_REF, REPO, RESULTS, is_frontier
 
 from router_bandit.evaluation import (
     average_performance_gap_recovered,
@@ -20,10 +20,14 @@ SHORT = {
     "LinUCB(a=0.3)": "LinUCB",
     "LinTS(v=0.2)": "LinTS",
     "D-LinUCB(a=0.3,g=0.9995)": "Discounted LinUCB",
+    "PILOT(a=0.3)": "PILOT-style",
     "eps-greedy(e=0.1)": "$\\epsilon$-greedy",
     "always-cheapest": "Always cheapest",
     "always-premium": "Always premium",
     "Random": "Random",
+    "Cascade(e=0)": "Cascade (perfect judge)",
+    "Cascade(e=0.1)": "Cascade (10\\% judge error)",
+    "Cascade(e=0.2)": "Cascade (20\\% judge error)",
 }
 
 
@@ -53,6 +57,9 @@ def _ci(lo: float, hi: float, spec: str = ".4f") -> str:
 
 def table_rq1() -> None:
     df = pd.read_csv(RESULTS / "rq1.csv")
+    # Hull-sweep rows are the frontier curve, drawn in Figure 4a. The tables
+    # keep the single lambda-matched Zero Router.
+    df = df.loc[~is_frontier(df)].copy()
     ref = df[np.isclose(df["lam"], LAMBDA_REF)]
     if "heldout_reward" not in ref.columns:
         _table_rq1_stream(ref)
@@ -130,6 +137,8 @@ def _table_rq1_latency(ref: pd.DataFrame) -> None:
     agg = ref.groupby("policy").agg(
         p50=("select_p50_s", "mean"), p99=("select_p99_s", "mean"),
     ).reset_index().sort_values("p50")
+    # The cascade is scored off the single-pull loop, so it has no select time.
+    agg = agg.replace([np.inf, -np.inf], np.nan).dropna(subset=["p50"])
     lines = [
         r"\begin{tabular}{lrr}", r"\toprule",
         r"Policy & Select p50 (ms) & Select p99 (ms) \\",

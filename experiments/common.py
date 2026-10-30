@@ -37,6 +37,7 @@ from router_bandit.policies import (
     FixedArm,
     LinTS,
     LinUCB,
+    PilotStyle,
     UniformRandom,
 )
 
@@ -133,9 +134,9 @@ def check_or_write_meta(setup: Setup, *, force: bool = False) -> dict:
         "lambda_grid": LAMBDA_GRID,
         "lambda_ref": LAMBDA_REF,
         "feature_dim": DIM,
-        # Bump when a cell gains columns. Old cells lack held-out intervals,
-        # the two recovery fields, PGR, select latency, and the shift diagnostics.
-        "metrics": "heldout-ci,recovery-v2,apgr,select-latency,shift-calibration",
+        # Bump when a cell gains columns or policies. Old cells lack the cascade,
+        # the PILOT-style router, the lambda-matched Zero Router, and the hull sweep.
+        "metrics": "heldout-ci,recovery-v2,apgr,select-latency,shift-calibration,baselines-v1",
     }
     path = RESULTS / "meta.json"
     if path.exists() and not force:
@@ -207,16 +208,55 @@ def calibration_stats(setup: Setup) -> tuple[np.ndarray, np.ndarray]:
     return setup.data.cost_norm[idx].mean(0), setup.data.quality[idx].mean(0)
 
 
+def oracle_mean_cost(setup: Setup, index: np.ndarray, lam: float) -> float:
+    """Mean normalised cost of the per-query oracle on ``index``.
+
+    One scalar, fixed before the run. The lambda-matched Zero Router and the
+    PILOT-style pacer both spend toward the oracle's average cost on these
+    queries.
+    """
+    index = np.asarray(index, dtype=np.int64)
+    if index.size == 0:
+        raise ValueError("oracle mean cost needs at least one query")
+    actions = setup.data.oracle(float(lam))[index]
+    return float(setup.data.cost_norm[index, actions].mean())
+
+
+def is_frontier(frame: pd.DataFrame) -> pd.Series:
+    """True on Zero Router hull-sweep rows.
+
+    Those rows trace the mixture curve. The comparison tables keep the single
+    lambda-matched Zero Router, whose ``frontier`` flag is false.
+    """
+    if "frontier" not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    return frame["frontier"].map(lambda v: str(v).strip().lower() in {"true", "1", "1.0"})
+
+
+def _pilot(setup: Setup, stream, lam: float, seed: int, mean_cost: np.ndarray, pace: float):
+    """LinUCB with a calibration prior and the oracle's mean spend as its pace."""
+    k, d = setup.n_arms, stream.dim
+    policy = PilotStyle(k, d, alpha=0.3, seed=seed, arm_costs=mean_cost, pace=pace)
+    calibration = setup.splits.calibration
+    policy.set_prior(
+        stream.feature_matrix()[calibration],
+        setup.data.rewards(lam)[calibration],
+    )
+    return policy
+
+
 def build_policies(setup: Setup, stream, env, lam: float, seed: int, *, which: str = "all"):
     """Instantiate the policy set for a run."""
     k, d = setup.n_arms, stream.dim
     mean_cost, mean_quality = calibration_stats(setup)
+    pace = oracle_mean_cost(setup, stream.order, lam)
     cheapest = int(np.argmin(setup.data.cost.mean(0)))
     priciest = int(np.argmax(setup.data.cost.mean(0)))
 
     bandits = [
         EpsilonGreedy(k, d, epsilon=0.1, seed=seed),
         LinUCB(k, d, alpha=0.3, seed=seed),
+        _pilot(setup, stream, lam, seed, mean_cost, pace),
         LinTS(k, d, v=0.2, seed=seed),
         DiscountedLinUCB(k, d, alpha=0.3, gamma=0.9995, seed=seed),
     ]
@@ -225,7 +265,10 @@ def build_policies(setup: Setup, stream, env, lam: float, seed: int, *, which: s
         FixedArm(cheapest, name="always-cheapest"),
         FixedArm(priciest, name="always-premium"),
         UniformRandom(k, seed=seed),
-        ZeroRouter(mean_cost, mean_quality, float(np.median(mean_cost)), seed=seed),
+        # Target the oracle's mean spend at this lambda so the row sits at the
+        # same cost the other policies are judged against. The hull sweep in
+        # RQ1 traces the rest of the curve.
+        ZeroRouter(mean_cost, mean_quality, pace, seed=seed, name="ZeroRouter"),
         fit_supervised(setup, stream, lam),
     ]
     if which == "bandits":

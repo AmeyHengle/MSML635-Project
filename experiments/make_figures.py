@@ -9,7 +9,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from common import FIGDIR, LAMBDA_REF, RESULTS
+from common import FIGDIR, LAMBDA_REF, RESULTS, is_frontier
 
 mpl.rcParams.update({
     "figure.dpi": 120, "savefig.dpi": 300, "savefig.bbox": "tight",
@@ -25,8 +25,10 @@ PALETTE = {
     "LinUCB(a=0.3)": "#2b6cb0",
     "D-LinUCB(a=0.3,g=0.9995)": "#805ad5",
     "LinTS(v=0.2)": "#dd6b20",
+    "PILOT": "#0f766e",
     "eps-greedy(e=0.1)": "#d53f8c",
     "ZeroRouter": "#718096",
+    "Cascade": "#6b46c1",
     "Random": "#a0aec0",
     "always-cheapest": "#b7791f",
     "always-premium": "#c53030",
@@ -48,7 +50,9 @@ def save(fig, name: str) -> None:
 
 # --------------------------------------------------------------------------- #
 def figure_rq1() -> None:
-    df = pd.read_csv(RESULTS / "rq1.csv")
+    raw = pd.read_csv(RESULTS / "rq1.csv")
+    hull = raw.loc[is_frontier(raw)]
+    df = raw.loc[~is_frontier(raw)]
     agg = df.groupby(["policy", "lam"]).agg(
         reward=("mean_reward", "mean"),
         quality=("mean_quality", "mean"),
@@ -65,6 +69,15 @@ def figure_rq1() -> None:
         style = "--" if policy in ("Oracle", "Random") else "-"
         axL.plot(grp["cost"], grp["quality"], style, marker="o", ms=3.4, lw=1.5,
                  color=colour(policy), label=policy, alpha=0.9)
+    if not hull.empty:
+        curve = hull.groupby("policy", as_index=False).agg(
+            quality=("mean_quality", "mean"),
+            cost=("mean_dollar_cost", "mean"),
+        ).sort_values("cost")
+        axL.plot(
+            curve["cost"], curve["quality"], "--", color=colour("ZeroRouter"),
+            lw=1.8, marker="s", ms=3.2, label="Zero Router hull", zorder=3,
+        )
     axL.set_xscale("log")
     axL.set_xlabel("mean cost per query (USD, log scale)")
     axL.set_ylabel("mean quality")

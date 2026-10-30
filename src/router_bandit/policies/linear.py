@@ -3,7 +3,9 @@
 All three maintain per-arm ridge regressions of reward on context. They differ
 only in how they turn the posterior into a decision: an optimism bonus
 (LinUCB), the same with geometric forgetting (discounted LinUCB), or a
-posterior sample (LinTS).
+posterior sample (LinTS). :class:`PilotStyle` is the same LinUCB update with a
+calibration ridge prior and a paced spend cap, the two pieces of PILOT
+(Panda et al., 2025) this study compares against.
 
 The inverse design matrices are maintained incrementally with the
 Sherman-Morrison identity, so an update is ``O(d^2)`` rather than ``O(d^3)``.
@@ -15,7 +17,7 @@ import numpy as np
 
 from .base import Policy
 
-__all__ = ["DiscountedLinUCB", "LinTS", "LinUCB"]
+__all__ = ["DiscountedLinUCB", "LinTS", "LinUCB", "PilotStyle"]
 
 
 class _LinearBase:
@@ -189,3 +191,122 @@ class LinTS(Policy):
     @property
     def theta(self) -> np.ndarray:
         return self._core.theta
+
+
+class PilotStyle(LinUCB):
+    """LinUCB with a calibration prior and a cumulative spend cap.
+
+    Two adaptations of PILOT (Panda et al., 2025). The posterior starts at a
+    ridge fit on the calibration split, held with ``prior_strength``
+    pseudo-observations, so the mean begins at that fit while a small strength
+    leaves the optimism bonus nearly as wide as a cold start. ``select`` then
+    refuses any arm whose mean cost would push cumulative spend above
+    ``pace * (t + 1)``. ``pace`` is the oracle's mean spend at this lambda.
+    When every arm would break the pace, the cheapest available arm is taken,
+    so a query still receives a model.
+
+    The policy never sees a query's cost vector. It prices arms by the
+    per-arm means it was given, which are known before the stream starts.
+    Round 0 begins a new episode: a frozen replay keeps the posterior and
+    still paces its own spend from zero.
+    """
+
+    def __init__(
+        self,
+        n_arms: int,
+        dim: int,
+        *,
+        alpha: float = 1.0,
+        ridge: float = 1.0,
+        seed: int = 0,
+        arm_costs: np.ndarray | None = None,
+        pace: float = np.inf,
+        prior_strength: float = 1.0,
+    ) -> None:
+        super().__init__(n_arms, dim, alpha=alpha, ridge=ridge, seed=seed)
+        self.pace = float(pace)
+        if self.pace < 0.0 or np.isnan(self.pace):
+            raise ValueError(f"pace must be non-negative or inf, got {pace}")
+        self.prior_strength = float(prior_strength)
+        if self.prior_strength < 0.0:
+            raise ValueError(f"prior_strength must be non-negative, got {prior_strength}")
+        if arm_costs is None:
+            self.arm_costs = None
+        else:
+            self.arm_costs = np.asarray(arm_costs, dtype=np.float64)
+            if self.arm_costs.shape != (n_arms,):
+                raise ValueError(
+                    f"arm_costs must have shape ({n_arms},), got {self.arm_costs.shape}"
+                )
+        if np.isfinite(self.pace) and self.arm_costs is None:
+            raise ValueError("a finite pace needs one mean cost per arm")
+        self._spent = 0.0
+        self._prior_A_inv: np.ndarray | None = None
+        self._prior_b: np.ndarray | None = None
+        self.name = f"PILOT(a={alpha:g})"
+
+    def set_prior(self, X: np.ndarray, rewards: np.ndarray) -> PilotStyle:
+        """Centre the posterior on a ridge fit of the calibration split.
+
+        ``X`` is ``(n, dim)`` and ``rewards`` is ``(n, n_arms)``, the reward
+        of every arm. The fit is the uncentered ridge ``(X'X + λI)^{-1} X'r``,
+        the same hypothesis the online update uses. ``b`` is chosen so the
+        prior mean stays at that fit, and ``prior_strength / n`` of the
+        empirical Gram is added to the precision. That strength is one
+        pseudo-count for the whole calibration split.
+        """
+        X = np.asarray(X, dtype=np.float64)
+        rewards = np.asarray(rewards, dtype=np.float64)
+        core = self._core
+        if X.ndim != 2 or X.shape[1] != core.dim:
+            raise ValueError(f"X must have shape (n, {core.dim}), got {X.shape}")
+        if rewards.shape != (X.shape[0], core.n_arms):
+            raise ValueError(
+                f"rewards must have shape ({X.shape[0]}, {core.n_arms}), got {rewards.shape}"
+            )
+        if X.shape[0] < 1:
+            raise ValueError("the calibration prior needs at least one row")
+
+        n, d = X.shape
+        gram = X.T @ X
+        penalty = core.ridge * np.eye(d)
+        theta_hat = np.linalg.solve(gram + penalty, X.T @ rewards).T
+        precision = penalty + (self.prior_strength / n) * gram
+        A_inv = np.linalg.inv(precision)
+        # precision @ theta_hat keeps the mean on the fit; strength only
+        # tightens the covariance. precision is symmetric.
+        self._prior_A_inv = np.repeat(A_inv[None, :, :], core.n_arms, axis=0)
+        self._prior_b = theta_hat @ precision
+        self.reset()
+        return self
+
+    def select(self, t: int, context: np.ndarray, available: np.ndarray) -> tuple[int, float]:
+        available = np.asarray(available, dtype=np.int64)
+        if t == 0:
+            self._spent = 0.0
+        allowed = self._affordable(t, available)
+        action, propensity = super().select(t, context, allowed)
+        if self.arm_costs is not None and np.isfinite(self.pace):
+            self._spent += float(self.arm_costs[action])
+        return action, propensity
+
+    def reset(self) -> None:
+        super().reset()
+        self._spent = 0.0
+        if self._prior_A_inv is not None and self._prior_b is not None:
+            self._core._A_inv = self._prior_A_inv.copy()
+            self._core._b = self._prior_b.copy()
+            for arm in range(self._core.n_arms):
+                self._core._refresh_theta(arm)
+
+    def _affordable(self, t: int, available: np.ndarray) -> np.ndarray:
+        """Arms whose mean cost still fits under the cumulative pace."""
+        if self.arm_costs is None or not np.isfinite(self.pace):
+            return available
+        room = self.pace * (t + 1) - self._spent
+        costs = self.arm_costs[available]
+        allowed = available[costs <= room + 1e-12]
+        if allowed.size == 0:
+            cheapest = int(available[int(np.argmin(costs))])
+            return np.asarray([cheapest], dtype=np.int64)
+        return allowed

@@ -16,7 +16,13 @@ import numpy as np
 
 from ..policies.base import Policy
 
-__all__ = ["ZeroRouter", "aiq", "non_decreasing_convex_hull"]
+__all__ = [
+    "ZeroRouter",
+    "aiq",
+    "hull_target_costs",
+    "non_decreasing_convex_hull",
+    "zero_frontier_policies",
+]
 
 
 def non_decreasing_convex_hull(costs: np.ndarray, qualities: np.ndarray) -> np.ndarray:
@@ -48,6 +54,44 @@ def non_decreasing_convex_hull(costs: np.ndarray, qualities: np.ndarray) -> np.n
     return np.asarray(hull, dtype=np.int64)
 
 
+def hull_target_costs(
+    costs: np.ndarray, qualities: np.ndarray, n_grid: int = 9
+) -> np.ndarray:
+    """Costs that trace the non-decreasing convex hull.
+
+    Every hull vertex is included, along with ``n_grid`` points from the
+    cheapest hull arm to the dearest. A Zero Router at each of those costs
+    is the mixture curve Figure 4a draws.
+    """
+    hull = non_decreasing_convex_hull(costs, qualities)
+    vertex = np.asarray(costs, dtype=np.float64)[hull]
+    if vertex.size <= 1 or n_grid <= 1:
+        return vertex.copy()
+    grid = np.linspace(float(vertex[0]), float(vertex[-1]), int(n_grid))
+    return np.unique(np.concatenate([vertex, grid]))
+
+
+def zero_frontier_policies(
+    mean_cost: np.ndarray,
+    mean_quality: np.ndarray,
+    *,
+    seed: int = 0,
+    n_grid: int = 9,
+) -> list[ZeroRouter]:
+    """One Zero Router per :func:`hull_target_costs` point."""
+    targets = hull_target_costs(mean_cost, mean_quality, n_grid=n_grid)
+    return [
+        ZeroRouter(
+            mean_cost,
+            mean_quality,
+            float(target),
+            seed=seed,
+            name=f"ZeroRouter-hull[{i}]",
+        )
+        for i, target in enumerate(targets)
+    ]
+
+
 def aiq(costs: np.ndarray, qualities: np.ndarray, hull: np.ndarray, n_grid: int = 512) -> float:
     """Average Improvement in Quality: area under the hull, normalised by its width."""
     hc, hq = np.asarray(costs)[hull], np.asarray(qualities)[hull]
@@ -69,6 +113,7 @@ class ZeroRouter(Policy):
         target_cost: float,
         *,
         seed: int = 0,
+        name: str | None = None,
     ) -> None:
         self.mean_cost = np.asarray(mean_cost, dtype=np.float64)
         self.mean_quality = np.asarray(mean_quality, dtype=np.float64)
@@ -77,7 +122,7 @@ class ZeroRouter(Policy):
         self._seed = seed
         self._rng = np.random.default_rng(seed)
         self._lo, self._hi, self._p_hi = self._bracket(self.target_cost)
-        self.name = f"ZeroRouter(c={target_cost:.2e})"
+        self.name = f"ZeroRouter(c={target_cost:.2e})" if name is None else name
 
     def _bracket(self, target: float) -> tuple[int, int, float]:
         hc = self.mean_cost[self.hull]
