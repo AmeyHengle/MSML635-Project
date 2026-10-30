@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -33,12 +34,7 @@ from common import (
 )
 
 from router_bandit.baselines import OraclePolicy
-from router_bandit.envs import (
-    MixShift,
-    PriceChange,
-    QualityDegradation,
-    ShiftSchedule,
-)
+from router_bandit.envs import ShiftSchedule
 from router_bandit.evaluation import (
     doubly_robust,
     fit_reward_model,
@@ -50,6 +46,15 @@ from router_bandit.evaluation import (
     routing_errors,
     run_policy,
     snips,
+)
+from router_bandit.evaluation.shift_calibration import (
+    ChosenStrength,
+    calibrate_degradation,
+    calibrate_price,
+    flip_rate,
+    most_selected_arm,
+    pull_rate,
+    scenario_schedules,
 )
 from router_bandit.policies import (
     DiscountedLinUCB,
@@ -107,49 +112,117 @@ def rq1(setup, force: bool = False) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # RQ2 -- shifts: do bandits adapt faster than a static supervised router?
 # --------------------------------------------------------------------------- #
-def shift_schedules(setup, t0: int) -> dict[str, ShiftSchedule]:
-    """The four scenarios, targeted at the arms the oracle actually uses.
+@dataclass(frozen=True)
+class Rq2Scenario:
+    """One shift, plus the arm and strength its rows should report."""
 
-    Targeting matters more than it looks. Our first attempt perturbed GPT-4 and
-    the cheapest arm; at lambda=10 the oracle selects neither often, so every
-    scenario was a no-op and all four policies looked identical. A shift only
-    tests adaptation if it changes the arm a good policy would have picked, so
-    each scenario here is aimed at the oracle's workhorse.
+    schedule: ShiftSchedule
+    shocked_arm: int | None = None
+    strength: float | None = None
+    router_flip: float | None = None
+
+
+def calibrate_router_shocks(setup, stream, t0: int) -> tuple[int, ChosenStrength, ChosenStrength]:
+    """Arm the supervised router uses, and the S2/S4 strengths that move it.
+
+    Measured on the seed-0 stationary stream at the reference lambda. The same
+    arm and strengths are then used for every RQ2 seed.
+    """
+    router = fit_supervised(setup, stream, LAMBDA_REF)
+    preds = router.predict_rewards(stream.contexts())
+    arm = most_selected_arm(preds.argmax(axis=1), setup.n_arms)
+    price = calibrate_price(preds, stream.cost_matrix(), arm, t0, LAMBDA_REF)
+    degrade = calibrate_degradation(preds, stream.quality_matrix(), arm, t0)
+    return arm, price, degrade
+
+
+def _strength_note(chosen: ChosenStrength) -> str:
+    relation = "reaches" if chosen.reached_target else "stays under"
+    return f"{chosen.strength:g} ({relation} 25%, router flip {chosen.flip_rate:.3f})"
+
+
+def shift_schedules(
+    setup,
+    t0: int,
+    *,
+    shocked_arm: int,
+    price: ChosenStrength,
+    degrade: ChosenStrength,
+) -> dict[str, Rq2Scenario]:
+    """The four scenarios.
+
+    S1 still withholds the oracle's most-used arm until ``t0``, and S3 still
+    reweights the query mix. S2 and S4 shock the arm the static supervised
+    router actually selects. Shocking the oracle's arm instead misses routers
+    that over-escalate, and those two scenarios then barely move reward.
     """
     oracle = setup.data.oracle(LAMBDA_REF)
     usage = np.bincount(oracle, minlength=setup.n_arms)
     workhorse = int(np.argmax(usage))
-    runner_up = int(np.argsort(usage)[-2])
-
+    raw = scenario_schedules(
+        t0,
+        oracle_arm=workhorse,
+        shocked_arm=shocked_arm,
+        multiplier=price.strength,
+        severity=degrade.strength,
+    )
     return {
-        "S0-stationary": ShiftSchedule(),
-        # The oracle's most-used arm is withheld until t0, then released.
-        "S1-new-model": ShiftSchedule(new_arms={workhorse: t0}),
-        # ... or becomes 10x more expensive half way through.
-        "S2-price-change": ShiftSchedule(
-            price_changes=(PriceChange(round=t0, arm=workhorse, multiplier=10.0),)
+        "S0-stationary": Rq2Scenario(raw["S0-stationary"]),
+        "S1-new-model": Rq2Scenario(raw["S1-new-model"], shocked_arm=workhorse),
+        "S2-price-change": Rq2Scenario(
+            raw["S2-price-change"],
+            shocked_arm=shocked_arm,
+            strength=price.strength,
+            router_flip=price.flip_rate,
         ),
-        "S3-query-mix": ShiftSchedule(
-            mix_shift=MixShift(round=t0, weights={"mbpp": 3.0, "gsm8k": 3.0, "arc": 1.0})
-        ),
-        # ... or silently starts failing 60% of the queries it used to answer.
-        "S4-silent-degrade": ShiftSchedule(
-            degradations=(
-                QualityDegradation(round=t0, arm=workhorse, severity=0.6),
-                QualityDegradation(round=t0, arm=runner_up, severity=0.3),
-            )
+        "S3-query-mix": Rq2Scenario(raw["S3-query-mix"]),
+        "S4-silent-degrade": Rq2Scenario(
+            raw["S4-silent-degrade"],
+            shocked_arm=shocked_arm,
+            strength=degrade.strength,
+            router_flip=degrade.flip_rate,
         ),
     }
 
 
+def _shock_columns(actions: np.ndarray, t0: int, oracle_flip: float, spec: Rq2Scenario) -> dict:
+    """Oracle flip is a property of the scenario; pull rates are this policy's."""
+    arm = spec.shocked_arm
+    if arm is None:
+        pre = post = np.nan
+    else:
+        pre = pull_rate(actions, arm, 0, t0)
+        post = pull_rate(actions, arm, t0, actions.size)
+    return {
+        "shocked_arm": np.nan if arm is None else arm,
+        "shift_strength": np.nan if spec.strength is None else spec.strength,
+        "oracle_flip_rate": oracle_flip,
+        "router_flip_rate": np.nan if spec.router_flip is None else spec.router_flip,
+        "pull_pre": pre,
+        "pull_post": post,
+    }
+
+
 def rq2(setup, force: bool = False) -> pd.DataFrame:
-    probe_env, _ = make_env(setup, LAMBDA_REF, 0)
+    probe_env, probe_stream = make_env(setup, LAMBDA_REF, 0)
     t0 = probe_env.n_rounds // 2
-    schedules = shift_schedules(setup, t0)
+    shocked_arm, price, degrade = calibrate_router_shocks(setup, probe_stream, t0)
+    print(
+        f"  calibration at lambda={LAMBDA_REF:g}, t0={t0}: shocked arm {shocked_arm}, "
+        f"S2 x{_strength_note(price)}, S4 severity {_strength_note(degrade)}",
+        flush=True,
+    )
+    schedules = shift_schedules(
+        setup, t0, shocked_arm=shocked_arm, price=price, degrade=degrade
+    )
 
     def cell(name: str, seed: int) -> pd.DataFrame:
         rows = []
-        env, stream = make_env(setup, LAMBDA_REF, seed, schedules[name])
+        spec = schedules[name]
+        env, stream = make_env(setup, LAMBDA_REF, seed, spec.schedule)
+        # Same query, stationary prices and quality, versus this scenario's oracle.
+        base_oracle = setup.data.oracle(LAMBDA_REF)[stream.order]
+        oracle_flip = flip_rate(base_oracle, env.truth.oracle_actions(), t0)
         k, d = setup.n_arms, stream.dim
         policies = [
             LinUCB(k, d, alpha=0.3, seed=seed),
@@ -172,6 +245,7 @@ def rq2(setup, force: bool = False) -> pd.DataFrame:
                 "rounds_to_recover": (
                     np.nan if rec.rounds_to_recover is None else rec.rounds_to_recover
                 ),
+                **_shock_columns(res.actions, t0, oracle_flip, spec),
             })
         return pd.DataFrame(rows)
 

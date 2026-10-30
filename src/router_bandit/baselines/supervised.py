@@ -70,9 +70,15 @@ class SupervisedRouter(Policy):
             self._models.append(est)
         return self
 
-    def select(self, t: int, context: np.ndarray, available: np.ndarray) -> tuple[int, float]:
+    def predict_rewards(self, X: np.ndarray) -> np.ndarray:
+        """Predicted reward of every fitted arm, shape ``(n, n_arms)``."""
         if not self._models:
-            raise RuntimeError("SupervisedRouter.fit must be called before select")
-        x = np.asarray(context, dtype=np.float64).reshape(1, -1)
-        preds = np.array([self._models[a].predict(x)[0] for a in available])
-        return int(available[int(np.argmax(preds))]), 1.0
+            raise RuntimeError("SupervisedRouter.fit must be called before predict_rewards")
+        X = np.asarray(X, dtype=np.float64)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        return np.column_stack([model.predict(X) for model in self._models])
+
+    def select(self, t: int, context: np.ndarray, available: np.ndarray) -> tuple[int, float]:
+        scores = self.predict_rewards(context)[0, available]
+        return int(available[int(np.argmax(scores))]), 1.0

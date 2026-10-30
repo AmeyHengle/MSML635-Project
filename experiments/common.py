@@ -134,8 +134,8 @@ def check_or_write_meta(setup: Setup, *, force: bool = False) -> dict:
         "lambda_ref": LAMBDA_REF,
         "feature_dim": DIM,
         # Bump when a cell gains columns. Old cells lack held-out intervals,
-        # the two recovery fields, PGR, and select latency.
-        "metrics": "heldout-ci,recovery-v2,apgr,select-latency",
+        # the two recovery fields, PGR, select latency, and the shift diagnostics.
+        "metrics": "heldout-ci,recovery-v2,apgr,select-latency,shift-calibration",
     }
     path = RESULTS / "meta.json"
     if path.exists() and not force:
