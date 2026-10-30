@@ -17,12 +17,13 @@ Install uv once:
 
 Then from the repo root:
 
-    uv sync --extra dev
+    uv sync
     uv run pytest
 
 That is the entire setup. uv installs the pinned interpreter (3.12) and
 resolves all dependencies from uv.lock, so every collaborator gets an
-identical environment.
+identical environment. `uv sync` includes the dev group (tests and linting)
+and pyarrow, which the committed parquet fixture needs.
 
 ## Optional dependency groups
 
@@ -31,7 +32,6 @@ dependencies are only needed for one-time offline jobs.
 
     uv sync --extra embed    # compute query embeddings once, then cached
     uv sync --extra data     # download RouterBench from HuggingFace
-    uv sync --extra dev      # tests and linting
 
 Run the embedding job once, commit the cached vectors, and no other
 collaborator ever installs PyTorch.
