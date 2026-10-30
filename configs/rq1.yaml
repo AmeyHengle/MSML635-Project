@@ -1,0 +1,18 @@
+# Frozen by experiments/ablate_features.py on the 5k fixture.
+# Winner: tfidf at d=32, mean held-out reward 0.61299
+# over the feature-using RQ1 policies (supervised router and the contextual
+# bandits) at lambda 10.0. Table: results/fixture/feature_ablation_scores.csv
+# These features win on mean held-out reward. Other per-policy winners:
+# LinTS(v=0.2) prefers tfidf at d=64.
+# LinUCB(a=0.3) prefers minilm at d=32.
+# PILOT(a=0.3) prefers tfidf at d=64.
+# Supervised(ridge) prefers tfidf at d=64.
+# common.py requires seeds, lambda_ref, and features to match the other research-question configs.
+
+seeds: [0, 1, 2, 3, 4]
+lambda_ref: 10.0
+lambda_grid: [0.0, 1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 50.0]
+features:
+  backend: tfidf
+  dim: 32
+  model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

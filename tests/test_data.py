@@ -18,6 +18,7 @@ from router_bandit.data import (
     MODELS,
     N_ARMS,
     RouterBenchStream,
+    SentenceTransformerBackend,
     Stream,
     SyntheticStream,
     TfidfSvdBackend,
@@ -207,6 +208,36 @@ def test_build_features_rejects_empty_fit_index():
 def test_build_features_rejects_out_of_bounds_index():
     with pytest.raises(IndexError):
         build_features(["a", "b"], np.array([5]), TfidfSvdBackend(4, min_df=1))
+
+
+def test_sentence_backend_pca_uses_only_the_fit_rows():
+    rng = np.random.default_rng(0)
+    embeddings = np.vstack([
+        rng.normal(size=(6, 8)),
+        rng.normal(size=(6, 8)) + 20.0,
+    ]).astype(np.float32)
+    fit = SentenceTransformerBackend(n_components=3, seed=0)
+    features = fit.fit_transform_embeddings(embeddings, np.arange(6))
+    other = SentenceTransformerBackend(n_components=3, seed=0)
+    other_features = other.fit_transform_embeddings(embeddings, np.arange(6, 12))
+
+    assert features.shape == (12, 3)
+    assert other_features.shape == (12, 3)
+    assert np.isfinite(features).all()
+    assert not np.allclose(features, other_features)
+
+
+def test_sentence_backend_pca_rejects_a_bad_fit_index():
+    embeddings = np.zeros((4, 3), dtype=np.float32)
+    backend = SentenceTransformerBackend(n_components=2, seed=0)
+    with pytest.raises(ValueError):
+        backend.fit_transform_embeddings(embeddings, np.array([], dtype=int))
+    with pytest.raises(IndexError):
+        backend.fit_transform_embeddings(embeddings, np.array([4]))
+    dirty = embeddings.copy()
+    dirty[0, 0] = np.nan
+    with pytest.raises(ValueError):
+        backend.fit_transform_embeddings(dirty, np.array([0, 1]))
 
 
 # --------------------------------------------------------------------------- #

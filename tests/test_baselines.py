@@ -206,7 +206,7 @@ def test_cascade_rows_cover_the_three_judge_errors():
 @needs_fixture
 def test_build_policies_matches_zero_router_and_pilot_to_the_oracle_spend():
     common, _run_all = _load_experiments()
-    setup = common.build_setup(seed=0, dim=8)
+    setup = common.build_setup(seed=0, dim=8, backend="tfidf")
     env, stream = common.make_env(setup, common.LAMBDA_REF, 0)
     policies = common.build_policies(setup, stream, env, common.LAMBDA_REF, 0)
     by_name = {policy.name: policy for policy in policies}

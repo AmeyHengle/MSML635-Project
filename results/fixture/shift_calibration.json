@@ -1,0 +1,18 @@
+{
+  "source": "fixture",
+  "lambda": 10.0,
+  "seed": 0,
+  "feature_backend": "tfidf",
+  "feature_dim": 32,
+  "selection_heldout_reward": 0.6129898115701446,
+  "t0": 1743,
+  "shocked_arm": 4,
+  "shocked_model": "zero-one-ai/Yi-34B-Chat",
+  "s2_multiplier": 5.0,
+  "s2_flip_rate": 0.25301204819277107,
+  "s2_reached_target": true,
+  "s4_severity": 1.0,
+  "s4_flip_rate": 0.2231784279977051,
+  "s4_reached_target": false,
+  "flip_target": 0.25
+}

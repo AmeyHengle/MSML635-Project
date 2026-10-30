@@ -1,0 +1,14 @@
+# Frozen by experiments/ablate_features.py on the 5k fixture.
+# These features win on mean held-out reward. Other per-policy winners:
+# LinTS(v=0.2) prefers tfidf at d=64.
+# LinUCB(a=0.3) prefers minilm at d=32.
+# PILOT(a=0.3) prefers tfidf at d=64.
+# Supervised(ridge) prefers tfidf at d=64.
+# common.py requires seeds, lambda_ref, and features to match the other research-question configs.
+
+seeds: [0, 1, 2, 3, 4]
+lambda_ref: 10.0
+features:
+  backend: tfidf
+  dim: 32
+  model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

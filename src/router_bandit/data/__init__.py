@@ -6,6 +6,7 @@ from .features import (
     SentenceTransformerBackend,
     TfidfSvdBackend,
     build_features,
+    cached_sentence_embeddings,
 )
 from .loaders import RouterBenchData, build, clean, load, load_raw, parse_prompt
 from .registry import (
@@ -42,6 +43,7 @@ __all__ = [
     "build_features",
     "build_stream",
     "cache_path",
+    "cached_sentence_embeddings",
     "clean",
     "config_hash",
     "cost_col",

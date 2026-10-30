@@ -15,15 +15,23 @@ Two interchangeable backends sit behind one interface:
 Both are *fit on a calibration split only*. Fitting the reducer on the full
 stream would leak post-shift distribution information backwards into the
 features, which is precisely the non-stationarity the project is measuring.
+
+MiniLM embeddings are cached under ``data/cache/``. The encoder runs once per
+corpus; each dimensionality is a PCA of that same matrix, fit on the
+calibration rows only.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
+
+from .cache import cache_path, load_arrays, save_arrays
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +40,7 @@ __all__ = [
     "SentenceTransformerBackend",
     "TfidfSvdBackend",
     "build_features",
+    "cached_sentence_embeddings",
 ]
 
 
@@ -203,6 +212,45 @@ class SentenceTransformerBackend(FeatureBackend):
             raise RuntimeError("SentenceTransformerBackend.fit must be called first")
         return self._pca.transform(embeddings).astype(np.float32)
 
+    def fit_transform_embeddings(
+        self, embeddings: np.ndarray, fit_index: np.ndarray
+    ) -> np.ndarray:
+        """PCA-reduce a cached embedding matrix.
+
+        The encoder output is row-aligned with the corpus. PCA is fit on
+        ``embeddings[fit_index]`` only — the calibration split — and then
+        applied to every row. That is the same leakage rule as
+        :func:`build_features`, without encoding the corpus once per
+        dimensionality.
+        """
+        from sklearn.decomposition import PCA
+
+        embeddings = np.asarray(embeddings, dtype=np.float32)
+        fit_index = np.asarray(fit_index, dtype=np.int64)
+        if embeddings.ndim != 2 or embeddings.shape[0] == 0:
+            raise ValueError(f"embeddings must be a non-empty 2-d matrix, got {embeddings.shape}")
+        if not np.isfinite(embeddings).all():
+            raise ValueError("embeddings contain NaN or inf")
+        if fit_index.size == 0:
+            raise ValueError("fit_index is empty; PCA needs calibration rows")
+        if fit_index.min() < 0 or fit_index.max() >= embeddings.shape[0]:
+            raise IndexError("fit_index out of bounds for embeddings")
+
+        basis = embeddings[fit_index]
+        n_comp = min(self.n_components, *basis.shape)
+        if n_comp < 1:
+            raise ValueError("PCA needs at least one component and one calibration row")
+        self._pca = PCA(n_components=n_comp, random_state=self._seed).fit(basis)
+        self.n_components = int(self._pca.n_components_)
+        logger.info(
+            "SentenceTransformerBackend PCA on %d/%d docs -> d=%d, explained_var=%.3f",
+            fit_index.size,
+            embeddings.shape[0],
+            self.n_components,
+            float(self._pca.explained_variance_ratio_.sum()),
+        )
+        return self._pca.transform(embeddings).astype(np.float32)
+
 
 def build_features(
     texts: Sequence[str],
@@ -234,3 +282,58 @@ def build_features(
     if not np.isfinite(features).all():
         raise ValueError("feature matrix contains NaN or inf")
     return features, backend
+
+
+def text_digest(texts: Sequence[str]) -> str:
+    """Stable SHA-256 of a corpus, including length prefixes so concatenation cannot collide."""
+    hasher = hashlib.sha256()
+    hasher.update(str(len(texts)).encode("ascii"))
+    hasher.update(b"\0")
+    for text in texts:
+        raw = str(text).encode("utf-8", errors="replace")
+        hasher.update(len(raw).to_bytes(8, "little"))
+        hasher.update(raw)
+    return hasher.hexdigest()
+
+
+def cached_sentence_embeddings(
+    texts: Sequence[str],
+    backend: SentenceTransformerBackend,
+    cache_dir: str | Path,
+) -> np.ndarray:
+    """Return ``(len(texts), hidden)`` MiniLM embeddings, reading ``cache_dir`` when possible.
+
+    The cache key is the model name, the clipping length, and a digest of the
+    texts. A changed corpus or model stores a new file instead of reusing a
+    stale one. PCA is intentionally not part of this cache: several
+    dimensionalities share one encoding.
+    """
+    texts = list(texts)
+    if not texts:
+        raise ValueError("cannot embed an empty corpus")
+    config = {
+        "model": backend.model_name,
+        "max_chars": int(backend.max_chars),
+        "normalize": True,
+        "n": len(texts),
+        "digest": text_digest(texts),
+    }
+    path = cache_path("minilm", config, cache_dir)
+    loaded = load_arrays(path)
+    if loaded is not None:
+        arrays, _stored = loaded
+        embeddings = arrays.get("embeddings")
+        if embeddings is not None and np.asarray(embeddings).shape[0] == len(texts):
+            logger.info("Loaded MiniLM embeddings from %s", path)
+            return np.asarray(embeddings, dtype=np.float32)
+        logger.warning("Ignoring embedding cache %s with an unexpected shape", path)
+
+    embeddings = np.asarray(backend.embed(texts), dtype=np.float32)
+    if embeddings.shape[0] != len(texts) or embeddings.ndim != 2:
+        raise ValueError(
+            f"encoder returned shape {embeddings.shape} for {len(texts)} texts"
+        )
+    if not np.isfinite(embeddings).all():
+        raise ValueError("encoder returned NaN or inf")
+    save_arrays(path, {"embeddings": embeddings}, config)
+    return embeddings

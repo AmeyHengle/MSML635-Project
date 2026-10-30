@@ -1,0 +1,31 @@
+# Frozen by experiments/ablate_features.py on the 5k fixture.
+# S1 and S3 are not stored here.
+# These features win on mean held-out reward. Other per-policy winners:
+# LinTS(v=0.2) prefers tfidf at d=64.
+# LinUCB(a=0.3) prefers minilm at d=32.
+# PILOT(a=0.3) prefers tfidf at d=64.
+# Supervised(ridge) prefers tfidf at d=64.
+# common.py requires seeds, lambda_ref, and features to match the other research-question configs.
+
+seeds: [0, 1, 2, 3, 4]
+lambda_ref: 10.0
+features:
+  backend: tfidf
+  dim: 32
+  model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+shifts:
+  # Fixture calibration on the seed-0 stationary stream. shocked_arm is the
+  # arm the supervised router selects most often. The multiplier and severity
+  # are the smallest shocks that change its arm on at least flip_target of
+  # post-shift queries, or the strongest grid point when none of them do.
+  # S1 and S3 stay as coded. RQ2 applies these strengths and recomputes the
+  # flip rate on the source it is running.
+  shocked_arm: 4
+  shocked_model: "zero-one-ai/Yi-34B-Chat"
+  s2_multiplier: 5.0
+  s2_flip_rate: 0.253012
+  s2_reached_target: true
+  s4_severity: 1.0
+  s4_flip_rate: 0.223178
+  s4_reached_target: false
+  flip_target: 0.25

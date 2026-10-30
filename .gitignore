@@ -20,6 +20,9 @@ data/raw/
 # Keep the subsample fixture and the interim results and figures in git
 !data/fixtures/
 !data/fixtures/**
+# Cached MiniLM embeddings. data/* ignores this directory unless it is re-included.
+!data/cache/
+!data/cache/**
 !results/fixture/
 !results/figures/
 # Per-cell experiment caches (merged rq*.csv files are committed)

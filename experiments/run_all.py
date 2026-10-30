@@ -19,10 +19,12 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from common import (
+    FEATURE_BACKEND,
     LAMBDA_GRID,
     LAMBDA_REF,
     RESULTS,
     SEEDS,
+    SHIFTS,
     SOURCE,
     build_policies,
     build_setup,
@@ -57,8 +59,10 @@ from router_bandit.evaluation.shift_calibration import (
     ChosenStrength,
     calibrate_degradation,
     calibrate_price,
+    degradation_flip_rate,
     flip_rate,
     most_selected_arm,
+    price_flip_rate,
     pull_rate,
     scenario_schedules,
 )
@@ -201,8 +205,10 @@ class Rq2Scenario:
 def calibrate_router_shocks(setup, stream, t0: int) -> tuple[int, ChosenStrength, ChosenStrength]:
     """Arm the supervised router uses, and the S2/S4 strengths that move it.
 
-    Measured on the seed-0 stationary stream at the reference lambda. The same
-    arm and strengths are then used for every RQ2 seed.
+    This is the fixture search. ``experiments/ablate_features.py`` runs it once,
+    on the winning features, and writes the chosen arm and strengths into
+    ``configs/rq2.yaml``. RQ2 itself does not search again; it replays those
+    frozen values via :func:`frozen_router_shocks`.
     """
     router = fit_supervised(setup, stream, LAMBDA_REF)
     preds = router.predict_rewards(stream.contexts())
@@ -279,12 +285,35 @@ def _shock_columns(actions: np.ndarray, t0: int, oracle_flip: float, spec: Rq2Sc
     }
 
 
+def frozen_router_shocks(setup, stream, t0: int) -> tuple[int, ChosenStrength, ChosenStrength]:
+    """Apply the fixture-calibrated arm and strengths, and measure their flip rates here.
+
+    The arm, multiplier, and severity come from ``configs/rq2.yaml``. They were
+    chosen on the fixture and are not searched again. The flip rates are
+    recomputed on ``stream`` so a row describes the data this run is actually
+    replaying. S1 and S3 do not use this result.
+    """
+    arm = SHIFTS.shocked_arm
+    router = fit_supervised(setup, stream, LAMBDA_REF)
+    preds = router.predict_rewards(stream.contexts())
+    s2_rate = price_flip_rate(
+        preds, stream.cost_matrix(), arm, t0, LAMBDA_REF, SHIFTS.s2_multiplier
+    )
+    s4_rate = degradation_flip_rate(
+        preds, stream.quality_matrix(), arm, t0, SHIFTS.s4_severity
+    )
+    price = ChosenStrength(SHIFTS.s2_multiplier, s2_rate, s2_rate >= SHIFTS.flip_target)
+    degrade = ChosenStrength(SHIFTS.s4_severity, s4_rate, s4_rate >= SHIFTS.flip_target)
+    return arm, price, degrade
+
+
 def rq2(setup, force: bool = False) -> pd.DataFrame:
     probe_env, probe_stream = make_env(setup, LAMBDA_REF, 0)
     t0 = probe_env.n_rounds // 2
-    shocked_arm, price, degrade = calibrate_router_shocks(setup, probe_stream, t0)
+    shocked_arm, price, degrade = frozen_router_shocks(setup, probe_stream, t0)
     print(
-        f"  calibration at lambda={LAMBDA_REF:g}, t0={t0}: shocked arm {shocked_arm}, "
+        f"  frozen shifts from configs/rq2.yaml at lambda={LAMBDA_REF:g}, t0={t0}: "
+        f"shocked arm {shocked_arm} ({SHIFTS.shocked_model}), "
         f"S2 x{_strength_note(price)}, S4 severity {_strength_note(degrade)}",
         flush=True,
     )
@@ -408,7 +437,8 @@ def main() -> None:
     print("building setup ...", flush=True)
     setup = build_setup(seed=0)
     print(f"  data: {setup.scale_note}, {setup.data.n_queries:,} queries, "
-          f"{setup.n_arms} arms, stream={len(setup.splits.stream):,}", flush=True)
+          f"{setup.n_arms} arms, stream={len(setup.splits.stream):,}, "
+          f"features={FEATURE_BACKEND} d={setup.features.shape[1]}", flush=True)
     check_or_write_meta(setup, force=force)
 
     for name, fn in (("rq1", rq1), ("rq2", rq2), ("rq3", rq3)):
