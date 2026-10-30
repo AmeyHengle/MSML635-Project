@@ -1,0 +1,20 @@
+\begin{tabular}{lrr}
+\toprule
+Policy & APGR & CPT (\$) \\
+\midrule
+Per-query oracle & 1.254 & 9.71e-05 \\
+Cascade (perfect judge) & 1.239 & 8.36e-04 \\
+Always premium & 1.000 & 3.26e-03 \\
+Cascade (10\% judge error) & 0.907 & 4.97e-04 \\
+Supervised (full info) & 0.847 & 1.40e-04 \\
+LinTS & 0.812 & 1.27e-04 \\
+$\epsilon$-greedy & 0.790 & 1.93e-04 \\
+LinUCB & 0.769 & 1.21e-04 \\
+Discounted LinUCB & 0.753 & 1.22e-04 \\
+Cascade (20\% judge error) & 0.659 & 3.23e-04 \\
+PILOT-style & 0.657 & 1.05e-04 \\
+Zero Router & 0.583 & 1.34e-04 \\
+Random & 0.451 & -- \\
+Always cheapest & 0.000 & -- \\
+\bottomrule
+\end{tabular}

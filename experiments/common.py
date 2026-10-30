@@ -343,7 +343,7 @@ def check_or_write_meta(setup: Setup, *, force: bool = False) -> dict:
     """
     current = {
         "source": SOURCE,
-        "data_file": str(setup.path.relative_to(REPO)),
+        "data_file": setup.path.relative_to(REPO).as_posix(),
         "n_queries": int(setup.data.n_queries),
         "n_arms": int(setup.n_arms),
         "n_stream": len(setup.splits.stream),

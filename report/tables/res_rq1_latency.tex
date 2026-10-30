@@ -1,0 +1,17 @@
+\begin{tabular}{lrr}
+\toprule
+Policy & Select p50 (ms) & Select p99 (ms) \\
+\midrule
+Always premium & 0.003 & 0.013 \\
+Always cheapest & 0.003 & 0.013 \\
+Zero Router & 0.004 & 0.021 \\
+$\epsilon$-greedy & 0.008 & 0.041 \\
+Random & 0.010 & 0.044 \\
+Per-query oracle & 0.014 & 0.051 \\
+PILOT-style & 0.039 & 0.136 \\
+LinUCB & 0.039 & 0.121 \\
+Discounted LinUCB & 0.039 & 0.128 \\
+LinTS & 0.045 & 0.152 \\
+Supervised (full info) & 0.939 & 2.426 \\
+\bottomrule
+\end{tabular}

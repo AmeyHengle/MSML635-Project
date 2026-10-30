@@ -24,6 +24,7 @@ data/raw/
 !data/cache/
 !data/cache/**
 !results/fixture/
+!results/full/
 !results/figures/
 # Per-cell experiment caches (merged rq*.csv files are committed)
 results/*/cells/

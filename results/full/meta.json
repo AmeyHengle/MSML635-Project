@@ -1,0 +1,34 @@
+{
+  "source": "full",
+  "data_file": "data/raw/routerbench_0shot.pkl",
+  "n_queries": 36417,
+  "n_arms": 11,
+  "n_stream": 25491,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "lambda_grid": [
+    0.0,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    15.0,
+    20.0,
+    30.0,
+    50.0
+  ],
+  "lambda_ref": 10.0,
+  "feature_backend": "tfidf",
+  "feature_dim": 32,
+  "feature_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "shocked_arm": 4,
+  "s2_multiplier": 5.0,
+  "s4_severity": 1.0,
+  "metrics": "heldout-ci,recovery-v2,apgr,select-latency,shift-calibration,baselines-v1",
+  "created_utc": "2026-10-30T19:49:47+00:00"
+}
